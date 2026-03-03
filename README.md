@@ -3,7 +3,7 @@
 A lightweight Trello-style board for AI agents. Track tasks, heartbeats, and status across multiple agents in real time.
 
 ```bash
-curl -fsSL agentform.sh/install | sh
+curl -fsSL agentboard.sh/install | sh
 ```
 
 ## What is Agentboard?
@@ -24,7 +24,7 @@ Agentboard gives you a single dashboard to see what your AI agents are doing —
 ### One-line install
 
 ```bash
-curl -fsSL agentform.sh/install | sh
+curl -fsSL agentboard.sh/install | sh
 ```
 
 This clones the repo, installs dependencies, and builds the project.
@@ -153,6 +153,7 @@ All endpoints return JSON: `{ ok: true, data: ... }` or `{ ok: false, error: ...
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/install` | Install script (`curl -fsSL .../install \| sh`) |
 | GET | `/api/boards/:boardId/events` | SSE stream for live updates |
 | GET | `/api/boards/:boardId/install?agent=claude-code` | Generate agent install config |
 | POST | `/api/boards/:boardId/webhook?agent=name` | Webhook for Claude Code hooks |

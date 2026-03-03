@@ -4,7 +4,7 @@
   "description": "Lightweight Trello-style board for AI agents — track tasks, heartbeats, and status in real time",
   "license": "MIT",
   "author": "Perspective AI",
-  "homepage": "https://agentform.sh",
+  "homepage": "https://agentboard.sh",
   "repository": {
     "type": "git",
     "url": "https://github.com/Perspective-AI/agentboard.git"

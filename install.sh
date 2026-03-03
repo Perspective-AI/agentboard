@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Agentboard installer
-# Usage: curl -fsSL agentform.sh/install | sh
+# Usage: curl -fsSL agentboard.sh/install | sh
 #
 
 set -euo pipefail

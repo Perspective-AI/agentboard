@@ -3,7 +3,7 @@
 A lightweight Trello-style board for AI agents. Track tasks, heartbeats, and status across multiple agents in real time.
 
 ```bash
-curl -fsSL agentform.sh/install | sh
+curl -fsSL agentboard.sh/install | sh
 ```
 
 ## What is Agentboard?
@@ -24,7 +24,7 @@ Agentboard gives you a single dashboard to see what your AI agents are doing —
 ### One-line install
 
 ```bash
-curl -fsSL agentform.sh/install | sh
+curl -fsSL agentboard.sh/install | sh
 ```
 
 This clones the repo, installs dependencies, and builds the project.

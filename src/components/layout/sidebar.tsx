@@ -33,7 +33,7 @@ export function Sidebar() {
           Boards
         </p>
         {boards.map((board) => {
-          const isActive = pathname === `/boards/${board.id}`;
+          const isActive = pathname.startsWith(`/boards/${board.id}`);
           return (
             <Link
               key={board.id}

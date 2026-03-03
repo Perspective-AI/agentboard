@@ -3,6 +3,8 @@
 import type { BoardSummary } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Plug } from "lucide-react";
 
 interface HeaderProps {
   board?: BoardSummary | null;
@@ -26,7 +28,15 @@ export function Header({ board }: HeaderProps) {
           <h1 className="text-sm font-semibold text-foreground">Agentboard</h1>
         )}
       </div>
-      <ThemeToggle />
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+          <a href="/skill.md" target="_blank" rel="noopener noreferrer">
+            <Plug className="h-4 w-4" />
+            Connect Agent
+          </a>
+        </Button>
+        <ThemeToggle />
+      </div>
     </header>
   );
 }

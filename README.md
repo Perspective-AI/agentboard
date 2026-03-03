@@ -153,6 +153,7 @@ All endpoints return JSON: `{ ok: true, data: ... }` or `{ ok: false, error: ...
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/install` | Install script (`curl -fsSL .../install \| sh`) |
 | GET | `/api/boards/:boardId/events` | SSE stream for live updates |
 | GET | `/api/boards/:boardId/install?agent=claude-code` | Generate agent install config |
 | POST | `/api/boards/:boardId/webhook?agent=name` | Webhook for Claude Code hooks |

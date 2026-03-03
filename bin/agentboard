@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+#
+# agentboard CLI — lightweight wrapper for the Agentboard REST API
+#
+# Usage:
+#   agentboard heartbeat <message>
+#   agentboard task create <project> <title> [priority]
+#   agentboard task start <project> <task-id>
+#   agentboard task done <project> <task-id>
+#   agentboard task block <project> <task-id>
+#   agentboard register [agent-name] [description]
+#   agentboard status
+#
+# Environment:
+#   AGENTBOARD_URL   — Server URL (default: http://localhost:4040)
+#   AGENTBOARD_BOARD — Board ID (default: agentboard)
+#   AGENTBOARD_AGENT — Agent ID (required for most commands)
+
+set -euo pipefail
+
+# Auto-source config from project root (walk up to find .agentboard)
+_dir="$(pwd)"
+while [ "$_dir" != "/" ]; do
+  if [ -f "$_dir/.agentboard" ]; then
+    source "$_dir/.agentboard"
+    break
+  fi
+  _dir="$(dirname "$_dir")"
+done
+
+URL="${AGENTBOARD_URL:-http://localhost:4040}"
+BOARD="${AGENTBOARD_BOARD:-agentboard}"
+AGENT="${AGENTBOARD_AGENT:-}"
+
+api() {
+  curl -s -X "$1" "${URL}${2}" \
+    -H "Content-Type: application/json" \
+    ${3:+-d "$3"}
+}
+
+case "${1:-help}" in
+  register)
+    NAME="${2:-$AGENT}"
+    DESC="${3:-AI agent}"
+    if [ -z "$NAME" ]; then
+      echo "Error: provide agent name or set AGENTBOARD_AGENT" >&2
+      exit 1
+    fi
+    api POST "/api/boards/${BOARD}/agents" \
+      "{\"name\":\"${NAME}\",\"description\":\"${DESC}\",\"metadata\":{}}"
+    ;;
+
+  heartbeat|hb)
+    if [ -z "$AGENT" ]; then echo "Error: set AGENTBOARD_AGENT" >&2; exit 1; fi
+    MSG="${2:-alive}"
+    api POST "/api/boards/${BOARD}/agents/${AGENT}/heartbeat" \
+      "{\"message\":\"${MSG}\"}"
+    ;;
+
+  task)
+    if [ -z "$AGENT" ]; then echo "Error: set AGENTBOARD_AGENT" >&2; exit 1; fi
+    case "${2:-}" in
+      create)
+        PROJECT="${3:?project-id required}"
+        TITLE="${4:?title required}"
+        PRIORITY="${5:-medium}"
+        api POST "/api/boards/${BOARD}/projects/${PROJECT}/tasks" \
+          "{\"title\":\"${TITLE}\",\"assigneeAgentId\":\"${AGENT}\",\"priority\":\"${PRIORITY}\"}"
+        ;;
+      start)
+        PROJECT="${3:?project-id required}"
+        TASK="${4:?task-id required}"
+        api PATCH "/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK}" \
+          '{"status":"in_progress"}'
+        ;;
+      done)
+        PROJECT="${3:?project-id required}"
+        TASK="${4:?task-id required}"
+        api PATCH "/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK}" \
+          '{"status":"done"}'
+        ;;
+      block)
+        PROJECT="${3:?project-id required}"
+        TASK="${4:?task-id required}"
+        api PATCH "/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK}" \
+          '{"status":"blocked"}'
+        ;;
+      *)
+        echo "Usage: agentboard task {create|start|done|block} <project> <task> [args...]" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  status)
+    echo "=== Board ==="
+    api GET "/api/boards/${BOARD}"
+    echo ""
+    if [ -n "$AGENT" ]; then
+      echo "=== Agent ==="
+      api GET "/api/boards/${BOARD}/agents/${AGENT}"
+      echo ""
+    fi
+    echo "=== Tasks ==="
+    api GET "/api/boards/${BOARD}/tasks"
+    ;;
+
+  help|--help|-h)
+    echo "agentboard CLI — report agent status to Agentboard"
+    echo ""
+    echo "Commands:"
+    echo "  register [name] [desc]            Register agent to board"
+    echo "  heartbeat <message>               Send heartbeat with status"
+    echo "  task create <proj> <title> [pri]   Create and assign task"
+    echo "  task start <proj> <task-id>        Set task in_progress"
+    echo "  task done <proj> <task-id>         Set task done"
+    echo "  task block <proj> <task-id>        Set task blocked"
+    echo "  status                             Show board & agent status"
+    echo ""
+    echo "Environment: AGENTBOARD_URL, AGENTBOARD_BOARD, AGENTBOARD_AGENT"
+    ;;
+
+  *)
+    echo "Unknown command: $1. Run 'agentboard help' for usage." >&2
+    exit 1
+    ;;
+esac

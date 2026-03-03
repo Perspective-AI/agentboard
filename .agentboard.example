@@ -1,0 +1,3 @@
+AGENTBOARD_URL=http://localhost:4040
+AGENTBOARD_BOARD=my-board
+AGENTBOARD_AGENT=my-agent

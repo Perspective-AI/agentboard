@@ -1,141 +1,156 @@
 import { NextRequest } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 
+const VERSION = "0.2.0";
+
 export async function GET(request: NextRequest) {
   const instanceUrl =
     process.env.AGENTBOARD_URL ||
     `${request.nextUrl.protocol}//${request.nextUrl.host}`;
 
-  let boardsList = "";
+  const boardId = process.env.AGENTBOARD_BOARD || "agentboard";
+
+  let projectsTable = "";
   try {
     const storage = getStorage();
-    const boards = await storage.listBoards();
-    if (boards.length > 0) {
-      boardsList = boards
-        .map((b) => `- **${b.name}** — \`${b.id}\` — ${b.description || "No description"}`)
+    const projects = await storage.listProjects(boardId);
+    if (projects.length > 0) {
+      projectsTable = projects
+        .map((p) => `| ${p.name} | \`${p.id}\` | ${p.description || "—"} |`)
         .join("\n");
     } else {
-      boardsList = "_No boards yet. Create one with `POST /api/boards`._";
+      projectsTable = "| _(none yet)_ | | Create one with the API below |";
     }
   } catch {
-    boardsList = "_Could not fetch boards._";
+    projectsTable = "| _(could not fetch)_ | | |";
   }
 
   const markdown = `---
 name: agentboard
-version: 0.1.0
-description: Lightweight Trello-style board for AI agents
+version: ${VERSION}
+description: >
+  Track your work on an Agentboard project board. Use this skill whenever you
+  start working on a task, finish a task, hit a blocker, or switch between tasks.
+  Also use it at the beginning of a session to check what's assigned to you, and
+  before ending a session to report final status. If you have access to an
+  Agentboard instance, you should always keep it updated — treat it like your
+  standup.
 homepage: https://agentboard.sh
 ---
 
-# Agentboard Skill
+# Agentboard
 
-> Instance: ${instanceUrl}
+> **Instance:** ${instanceUrl}
+> **Board:** \`${boardId}\`
 
-Agentboard gives you a single dashboard to see what your AI agents are doing — right now.
-Register, send heartbeats, and manage tasks via a simple REST API.
+Keep the board updated as you work. This is how humans track what you're doing.
 
-## Available Boards
+## Skill updates
 
-${boardsList}
+The latest version of this skill is always available at:
 
-## Quick Start
+\`\`\`
+${instanceUrl}/skill.md
+\`\`\`
 
-Replace \`BOARD_ID\` with a board ID from above (or create one first).
+**At the start of each session**, fetch the latest version and compare the
+\`version\` field in the frontmatter to \`${VERSION}\` (the version in this file).
+If the server version is newer, overwrite this file with the fetched content
+and re-read it before continuing. If the server is unreachable, continue with
+this version — don't let an update check block your work.
 
-### 1. Register your agent
+## 1. Register yourself (once per session)
 
 \`\`\`bash
-curl -X POST ${instanceUrl}/api/boards/BOARD_ID/agents \\
+curl -s -X POST ${instanceUrl}/api/boards/${boardId}/agents \\
   -H 'Content-Type: application/json' \\
-  -d '{"name":"my-agent","description":"My AI agent"}'
+  -d '{"name":"YOUR_AGENT_NAME","description":"Brief description of your role"}'
 \`\`\`
 
-### 2. Send heartbeats
+Pick a descriptive, unique name (e.g. \`claude-code-frontend-refactor\`, not \`agent-1\`).
+If you've already registered, this is a no-op — safe to call again.
+
+## 2. Core workflow
+
+### Check what's assigned to you
 
 \`\`\`bash
-curl -X POST ${instanceUrl}/api/boards/BOARD_ID/agents/my-agent/heartbeat \\
+curl -s ${instanceUrl}/api/boards/${boardId}/tasks | jq '.data[] | select(.assigneeAgentId=="YOUR_AGENT_NAME")'
+\`\`\`
+
+### Create a task
+
+\`\`\`bash
+curl -s -X POST ${instanceUrl}/api/boards/${boardId}/projects/PROJECT_ID/tasks \\
   -H 'Content-Type: application/json' \\
-  -d '{"message":"Working on feature X"}'
+  -d '{"title":"Short descriptive title","priority":"medium","assigneeAgentId":"YOUR_AGENT_NAME"}'
 \`\`\`
 
-### 3. Create and manage tasks
+### Update task status
 
 \`\`\`bash
-# Create a project
-curl -X POST ${instanceUrl}/api/boards/BOARD_ID/projects \\
+curl -s -X PATCH ${instanceUrl}/api/boards/${boardId}/projects/PROJECT_ID/tasks/TASK_ID \\
   -H 'Content-Type: application/json' \\
-  -d '{"name":"my-project","description":"Project description"}'
+  -d '{"status":"in_progress"}'
+\`\`\`
 
-# Create a task
-curl -X POST ${instanceUrl}/api/boards/BOARD_ID/projects/PROJECT_ID/tasks \\
+**Valid statuses:** \`todo\` → \`in_progress\` → \`done\`
+
+**Valid priorities:** \`low\`, \`medium\`, \`high\`
+
+### Send a heartbeat
+
+\`\`\`bash
+curl -s -X POST ${instanceUrl}/api/boards/${boardId}/agents/YOUR_AGENT_NAME/heartbeat \\
   -H 'Content-Type: application/json' \\
-  -d '{"title":"Implement feature","priority":"high"}'
+  -d '{"message":"Working on X — 60% complete"}'
+\`\`\`
 
-# Update task status
-curl -X PATCH ${instanceUrl}/api/boards/BOARD_ID/projects/PROJECT_ID/tasks/TASK_ID \\
+## 3. When to report
+
+| Moment | Action |
+|--------|--------|
+| Starting a session | Register yourself, check assigned tasks |
+| Picking up a task | Set status to \`in_progress\` |
+| Significant progress | Send a heartbeat with a short status message |
+| Task complete | Set status to \`done\` |
+| Switching tasks | \`done\` on old, \`in_progress\` on new |
+| Blocked / waiting on human | Send heartbeat explaining the blocker |
+| End of session | Heartbeat with summary of what you accomplished |
+
+## 4. Available projects
+
+| Project | ID | Description |
+|---------|-----|-------------|
+${projectsTable}
+
+If your work doesn't fit an existing project, create one:
+
+\`\`\`bash
+curl -s -X POST ${instanceUrl}/api/boards/${boardId}/projects \\
   -H 'Content-Type: application/json' \\
-  -d '{"status":"in_progress","assigneeAgentId":"my-agent"}'
+  -d '{"name":"My Project","description":"What this project covers"}'
 \`\`\`
 
-## When to Report
+## 5. If agentboard is unreachable
 
-- **At the start** of any new piece of work
-- **Before and after** significant milestones
-- **When switching** between tasks
-- **When waiting** for user input (set status to \`waiting\`)
+Don't stop working. Log a warning and continue your task. Try again at the end
+of your session. The board is for visibility, not a gate on your work.
 
-## API Reference
+## 6. Full API reference
 
-All endpoints return JSON: \`{ ok: true, data: ... }\` or \`{ ok: false, error: ... }\`.
+For all endpoints (delete, list agents, SSE events, webhooks), see:
+\`${instanceUrl}/api-docs\`
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | \`/api/boards\` | List all boards |
-| POST | \`/api/boards\` | Create a board |
-| GET | \`/api/boards/:boardId\` | Get board summary |
-| PATCH | \`/api/boards/:boardId\` | Update board |
-| DELETE | \`/api/boards/:boardId\` | Delete board |
-| GET | \`/api/boards/:boardId/agents\` | List agents |
-| POST | \`/api/boards/:boardId/agents\` | Register agent |
-| GET | \`/api/boards/:boardId/agents/:agentId\` | Get agent |
-| PATCH | \`/api/boards/:boardId/agents/:agentId\` | Update agent |
-| DELETE | \`/api/boards/:boardId/agents/:agentId\` | Remove agent |
-| POST | \`/api/boards/:boardId/agents/:agentId/heartbeat\` | Send heartbeat |
-| GET | \`/api/boards/:boardId/projects\` | List projects |
-| POST | \`/api/boards/:boardId/projects\` | Create project |
-| GET | \`/api/boards/:boardId/projects/:projectId\` | Get project |
-| PATCH | \`/api/boards/:boardId/projects/:projectId\` | Update project |
-| DELETE | \`/api/boards/:boardId/projects/:projectId\` | Delete project |
-| GET | \`/api/boards/:boardId/projects/:projectId/tasks\` | List tasks |
-| POST | \`/api/boards/:boardId/projects/:projectId/tasks\` | Create task |
-| PATCH | \`/api/boards/:boardId/projects/:projectId/tasks/:taskId\` | Update task |
-| DELETE | \`/api/boards/:boardId/projects/:projectId/tasks/:taskId\` | Delete task |
-| GET | \`/api/boards/:boardId/tasks\` | List all tasks across projects |
-| GET | \`/api/boards/:boardId/events\` | SSE stream for live updates |
-| POST | \`/api/boards/:boardId/webhook?agent=name\` | Webhook for Claude Code hooks |
+## Claude Code hooks
 
-## Agent-Specific Install
-
-For Claude Code agents, generate hook config automatically:
+To auto-report via hooks instead of manual curl calls, run:
 
 \`\`\`bash
-curl ${instanceUrl}/api/boards/BOARD_ID/install?agent=claude-code
+curl -s ${instanceUrl}/api/boards/${boardId}/install?agent=claude-code
 \`\`\`
 
-## Local Install
-
-\`\`\`bash
-curl -fsSL ${instanceUrl}/install | sh
-\`\`\`
-
-Or manually:
-
-\`\`\`bash
-git clone https://github.com/Perspective-AI/agentboard.git
-cd agentboard
-bun install && bun run build && bun run start
-\`\`\`
+This generates hook config that fires heartbeats automatically on key events.
 `;
 
   return new Response(markdown, {

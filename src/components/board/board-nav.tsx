@@ -20,7 +20,6 @@ const tabs: Tab[] = [
   { value: "projects", label: "Projects", countKey: "projects" },
   { value: "agents", label: "Agents", countKey: "agents" },
   { value: "tasks", label: "All Tasks", countKey: "tasks" },
-  { value: "install", label: "Install" },
 ];
 
 export function BoardNav({ boardId }: { boardId: string }) {

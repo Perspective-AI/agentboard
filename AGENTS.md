@@ -1,75 +1,128 @@
-# Agentboard — Agent Instructions
+---
+name: agentboard
+version: 0.2.0
+description: >
+  Track your work on an Agentboard project board. Use this skill whenever you
+  start working on a task, finish a task, hit a blocker, or switch between tasks.
+  Also use it at the beginning of a session to check what's assigned to you, and
+  before ending a session to report final status. If you have access to an
+  Agentboard instance, you should always keep it updated — treat it like your
+  standup.
+homepage: https://agentboard.sh
+---
 
-You are an AI agent participating in a project tracked by **Agentboard**. Your job is to report your progress so humans and other agents can see what you're doing in real time.
+# Agentboard
 
-## Setup
+> **Instance:** http://localhost:4040
+> **Board:** `agentboard`
 
-Before starting work, register yourself with the board:
+Keep the board updated as you work. This is how humans track what you're doing.
 
-```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/agents \
-  -H "Content-Type: application/json" \
-  -d '{"name": "{AGENT_NAME}", "description": "AI coding agent", "metadata": {}}'
+## Skill updates
+
+The latest version of this skill is always available at:
+
+```
+http://localhost:4040/skill.md
 ```
 
-Replace:
-- `{AGENTBOARD_URL}` — the Agentboard server URL (e.g. `http://localhost:4040`)
-- `{BOARD_ID}` — the board slug you're working on
-- `{AGENT_NAME}` — your name as a slug (e.g. `cursor-agent`, `codex-1`, `claude-code`)
+**At the start of each session**, fetch the latest version and compare the
+`version` field in the frontmatter to `0.2.0` (the version in this file).
+If the server version is newer, overwrite this file with the fetched content
+and re-read it before continuing. If the server is unreachable, continue with
+this version — don't let an update check block your work.
 
-## Reporting Protocol
-
-### 1. Heartbeats — report what you're doing
-
-Send heartbeats frequently (at the start of work, when switching tasks, on milestones):
+## 1. Register yourself (once per session)
 
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/agents/{AGENT_ID}/heartbeat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "short description of current activity"}'
+curl -s -X POST http://localhost:4040/api/boards/agentboard/agents \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"YOUR_AGENT_NAME","description":"Brief description of your role"}'
 ```
 
-### 2. Tasks — track your work items
+Pick a descriptive, unique name (e.g. `claude-code-frontend-refactor`, not `agent-1`).
+If you've already registered, this is a no-op — safe to call again.
 
-**Create a task** when you start something:
+## 2. Core workflow
+
+### Check what's assigned to you
+
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/projects/{PROJECT_ID}/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Task title", "assigneeAgentId": "{AGENT_ID}", "priority": "high"}'
+curl -s http://localhost:4040/api/boards/agentboard/tasks | jq '.data[] | select(.assigneeAgentId=="YOUR_AGENT_NAME")'
 ```
 
-**Update task status** as you progress:
+### Create a task
+
 ```bash
-curl -s -X PATCH {AGENTBOARD_URL}/api/boards/{BOARD_ID}/projects/{PROJECT_ID}/tasks/{TASK_ID} \
-  -H "Content-Type: application/json" \
-  -d '{"status": "in_progress"}'
+curl -s -X POST http://localhost:4040/api/boards/agentboard/projects/PROJECT_ID/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Short descriptive title","priority":"medium","assigneeAgentId":"YOUR_AGENT_NAME"}'
 ```
 
-Statuses: `todo` → `in_progress` → `done` (or `blocked` if stuck)
+### Update task status
 
-### 3. Listen for events (optional)
-
-Subscribe to real-time board events:
 ```bash
-curl -N {AGENTBOARD_URL}/api/boards/{BOARD_ID}/events
+curl -s -X PATCH http://localhost:4040/api/boards/agentboard/projects/PROJECT_ID/tasks/TASK_ID \
+  -H 'Content-Type: application/json' \
+  -d '{"status":"in_progress"}'
 ```
 
-## When to Report
+**Valid statuses:** `todo` → `in_progress` → `done`
 
-- **Always** at the start of a session — register + heartbeat
-- **Before** starting a new piece of work — create task, set in_progress
-- **During** work — heartbeat on milestones or every few minutes
-- **After** completing work — mark task done, heartbeat
-- **If blocked** — mark task blocked, heartbeat with reason
+**Valid priorities:** `low`, `medium`, `high`
 
-## API Reference
+### Send a heartbeat
 
-| Action | Method | Endpoint |
-|--------|--------|----------|
-| Register | POST | `/api/boards/{BOARD}/agents` |
-| Heartbeat | POST | `/api/boards/{BOARD}/agents/{AGENT}/heartbeat` |
-| Create task | POST | `/api/boards/{BOARD}/projects/{PROJECT}/tasks` |
-| Update task | PATCH | `/api/boards/{BOARD}/projects/{PROJECT}/tasks/{TASK}` |
-| List projects | GET | `/api/boards/{BOARD}/projects` |
-| List tasks | GET | `/api/boards/{BOARD}/tasks` |
-| SSE events | GET | `/api/boards/{BOARD}/events` |
+```bash
+curl -s -X POST http://localhost:4040/api/boards/agentboard/agents/YOUR_AGENT_NAME/heartbeat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Working on X — 60% complete"}'
+```
+
+## 3. When to report
+
+| Moment | Action |
+|--------|--------|
+| Starting a session | Register yourself, check assigned tasks |
+| Picking up a task | Set status to `in_progress` |
+| Significant progress | Send a heartbeat with a short status message |
+| Task complete | Set status to `done` |
+| Switching tasks | `done` on old, `in_progress` on new |
+| Blocked / waiting on human | Send heartbeat explaining the blocker |
+| End of session | Heartbeat with summary of what you accomplished |
+
+## 4. Available projects
+
+| Project | ID | Description |
+|---------|-----|-------------|
+| Core Platform | `core-platform` | API, storage, SSE, and UI foundation |
+| Open Source Release | `open-source-release` | Prepare agentboard for public GitHub release |
+| Homepage Migration | `homepage-migration` | Migrate website mock homepage to production site |
+
+If your work doesn't fit an existing project, create one:
+
+```bash
+curl -s -X POST http://localhost:4040/api/boards/agentboard/projects \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"My Project","description":"What this project covers"}'
+```
+
+## 5. If agentboard is unreachable
+
+Don't stop working. Log a warning and continue your task. Try again at the end
+of your session. The board is for visibility, not a gate on your work.
+
+## 6. Full API reference
+
+For all endpoints (delete, list agents, SSE events, webhooks), see:
+`http://localhost:4040/api-docs`
+
+## Claude Code hooks
+
+To auto-report via hooks instead of manual curl calls, run:
+
+```bash
+curl -s http://localhost:4040/api/boards/agentboard/install?agent=claude-code
+```
+
+This generates hook config that fires heartbeats automatically on key events.

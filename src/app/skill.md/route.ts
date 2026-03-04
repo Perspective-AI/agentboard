@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 
-const VERSION = "0.3.0";
+const SKILL_RELEASE = {
+  version: "0.3.3",
+  updatedAt: "2026-03-04T12:54:00-08:00",
+};
 
 export async function GET(request: NextRequest) {
   const instanceUrl =
@@ -27,7 +30,8 @@ export async function GET(request: NextRequest) {
 
   const markdown = `---
 name: agentboard
-version: ${VERSION}
+version: ${SKILL_RELEASE.version}
+updated: ${SKILL_RELEASE.updatedAt}
 description: >
   Track your work on an Agentboard project board. Use this skill whenever you
   start working on a task, finish a task, hit a blocker, or switch between tasks.
@@ -54,10 +58,12 @@ ${instanceUrl}/skill.md
 \`\`\`
 
 **At the start of each session**, fetch the latest version and compare the
-\`version\` field in the frontmatter to \`${VERSION}\` (the version in this file).
-If the server version is newer, overwrite this file with the fetched content
-and re-read it before continuing. If the server is unreachable, continue with
-this version — don't let an update check block your work.
+\`version\` and \`updated\` fields in the frontmatter to this file's values
+(\`${SKILL_RELEASE.version}\`, \`${SKILL_RELEASE.updatedAt}\`).
+If the server version is newer (or same version with newer timestamp), overwrite this
+file with the fetched content and re-read it before continuing.
+If the server is unreachable, continue with this version — don't let an update
+check block your work.
 
 ## 1. Configure and register (once per session)
 

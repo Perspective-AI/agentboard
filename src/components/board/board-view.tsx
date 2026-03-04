@@ -9,7 +9,6 @@ import { AgentList } from "./agent-list";
 import { AllTasksTable } from "./all-tasks-table";
 import { TaskDetail } from "./task-detail";
 import { GettingStarted } from "./getting-started";
-import { InstallAgents } from "./install-agents";
 
 interface BoardViewProps {
   boardId: string;
@@ -63,7 +62,6 @@ export function BoardView({ boardId }: BoardViewProps) {
               <span className="ml-1.5 text-xs text-muted-foreground">{tasks.length}</span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="install">Install</TabsTrigger>
         </TabsList>
 
         <TabsContent value="projects" className="mt-4">
@@ -86,10 +84,6 @@ export function BoardView({ boardId }: BoardViewProps) {
             projects={projects}
             onTaskClick={setSelectedTask}
           />
-        </TabsContent>
-
-        <TabsContent value="install" className="mt-4">
-          <InstallAgents boardId={boardId} />
         </TabsContent>
       </Tabs>
 

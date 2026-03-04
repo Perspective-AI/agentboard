@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 
 export async function GET(request: NextRequest) {
   const instanceUrl =
@@ -59,20 +59,36 @@ If the server version is newer, overwrite this file with the fetched content
 and re-read it before continuing. If the server is unreachable, continue with
 this version — don't let an update check block your work.
 
-## 1. Register yourself (once per session)
+## 1. Configure and register (once per session)
+
+Use the local CLI wrapper (\`./bin/agentboard\`) instead of raw \`curl\` for
+routine reporting. In permissioned runtimes, this keeps the command prefix
+stable so one approval can cover all future heartbeats/task updates.
 
 \`\`\`bash
-curl -s -X POST ${instanceUrl}/api/boards/${boardId}/agents \\
-  -H 'Content-Type: application/json' \\
-  -d '{"name":"YOUR_AGENT_NAME","description":"Brief description of your role"}'
+# .agentboard config in the project root
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL=${instanceUrl}
+AGENTBOARD_BOARD=${boardId}
+AGENTBOARD_AGENT=YOUR_AGENT_NAME
+EOF
+
+# register agent (safe to call again)
+./bin/agentboard register YOUR_AGENT_NAME "Brief description of your role"
 \`\`\`
 
-Pick a descriptive, unique name (e.g. \`claude-code-frontend-refactor\`, not \`agent-1\`).
-If you've already registered, this is a no-op — safe to call again.
+Pick a descriptive, unique name (e.g. \`claude-code-frontend-refactor\`, not
+\`agent-1\`).
 
 ## 2. Core workflow
 
 ### Check what's assigned to you
+
+\`\`\`bash
+./bin/agentboard status
+\`\`\`
+
+Optional API-level filter:
 
 \`\`\`bash
 curl -s ${instanceUrl}/api/boards/${boardId}/tasks | jq '.data[] | select(.assigneeAgentId=="YOUR_AGENT_NAME")'
@@ -81,17 +97,15 @@ curl -s ${instanceUrl}/api/boards/${boardId}/tasks | jq '.data[] | select(.assig
 ### Create a task
 
 \`\`\`bash
-curl -s -X POST ${instanceUrl}/api/boards/${boardId}/projects/PROJECT_ID/tasks \\
-  -H 'Content-Type: application/json' \\
-  -d '{"title":"Short descriptive title","priority":"medium","assigneeAgentId":"YOUR_AGENT_NAME"}'
+./bin/agentboard task create PROJECT_ID "Short descriptive title" medium
 \`\`\`
 
 ### Update task status
 
 \`\`\`bash
-curl -s -X PATCH ${instanceUrl}/api/boards/${boardId}/projects/PROJECT_ID/tasks/TASK_ID \\
-  -H 'Content-Type: application/json' \\
-  -d '{"status":"in_progress"}'
+./bin/agentboard task start PROJECT_ID TASK_ID
+./bin/agentboard task done PROJECT_ID TASK_ID
+./bin/agentboard task block PROJECT_ID TASK_ID
 \`\`\`
 
 **Valid statuses:** \`todo\` → \`in_progress\` → \`done\`
@@ -101,9 +115,7 @@ curl -s -X PATCH ${instanceUrl}/api/boards/${boardId}/projects/PROJECT_ID/tasks/
 ### Send a heartbeat
 
 \`\`\`bash
-curl -s -X POST ${instanceUrl}/api/boards/${boardId}/agents/YOUR_AGENT_NAME/heartbeat \\
-  -H 'Content-Type: application/json' \\
-  -d '{"message":"Working on X — 60% complete"}'
+./bin/agentboard heartbeat "Working on X - 60% complete"
 \`\`\`
 
 ## 3. When to report
@@ -144,7 +156,7 @@ For all endpoints (delete, list agents, SSE events, webhooks), see:
 
 ## Claude Code hooks
 
-To auto-report via hooks instead of manual curl calls, run:
+To auto-report via hooks instead of manual task/heartbeat commands, run:
 
 \`\`\`bash
 curl -s ${instanceUrl}/api/boards/${boardId}/install?agent=claude-code

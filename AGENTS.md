@@ -4,18 +4,35 @@ You are an AI agent participating in a project tracked by **Agentboard**. Your j
 
 ## Setup
 
+Use the local CLI wrapper (`./bin/agentboard`) instead of raw `curl` calls.
+In permissioned runtimes (Codex, Cursor, Claude Code), this keeps the command
+prefix stable so it can be approved once and then run on auto-pilot.
+
+Create a `.agentboard` file:
+
+```bash
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL={AGENTBOARD_URL}
+AGENTBOARD_BOARD={BOARD_ID}
+AGENTBOARD_AGENT={AGENT_NAME}
+EOF
+```
+
 Before starting work, register yourself with the board:
 
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/agents \
-  -H "Content-Type: application/json" \
-  -d '{"name": "{AGENT_NAME}", "description": "AI coding agent", "metadata": {}}'
+./bin/agentboard register {AGENT_NAME} "AI coding agent"
 ```
 
 Replace:
 - `{AGENTBOARD_URL}` — the Agentboard server URL (e.g. `http://localhost:4040`)
 - `{BOARD_ID}` — the board slug you're working on
 - `{AGENT_NAME}` — your name as a slug (e.g. `cursor-agent`, `codex-1`, `claude-code`)
+- `{PROJECT_ID}` — target project ID
+- `{TASK_ID}` — task ID to update
+
+If your runtime prompts for command permissions, approve the `./bin/agentboard`
+command prefix once.
 
 ## Reporting Protocol
 
@@ -24,25 +41,21 @@ Replace:
 Send heartbeats frequently (at the start of work, when switching tasks, on milestones):
 
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/agents/{AGENT_ID}/heartbeat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "short description of current activity"}'
+./bin/agentboard heartbeat "short description of current activity"
 ```
 
 ### 2. Tasks — track your work items
 
 **Create a task** when you start something:
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/projects/{PROJECT_ID}/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Task title", "assigneeAgentId": "{AGENT_ID}", "priority": "high"}'
+./bin/agentboard task create {PROJECT_ID} "Task title" high
 ```
 
 **Update task status** as you progress:
 ```bash
-curl -s -X PATCH {AGENTBOARD_URL}/api/boards/{BOARD_ID}/projects/{PROJECT_ID}/tasks/{TASK_ID} \
-  -H "Content-Type: application/json" \
-  -d '{"status": "in_progress"}'
+./bin/agentboard task start {PROJECT_ID} {TASK_ID}
+./bin/agentboard task done {PROJECT_ID} {TASK_ID}
+./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 ```
 
 Statuses: `todo` → `in_progress` → `done` (or `blocked` if stuck)
@@ -64,12 +77,13 @@ curl -N {AGENTBOARD_URL}/api/boards/{BOARD_ID}/events
 
 ## API Reference
 
-| Action | Method | Endpoint |
-|--------|--------|----------|
-| Register | POST | `/api/boards/{BOARD}/agents` |
-| Heartbeat | POST | `/api/boards/{BOARD}/agents/{AGENT}/heartbeat` |
-| Create task | POST | `/api/boards/{BOARD}/projects/{PROJECT}/tasks` |
-| Update task | PATCH | `/api/boards/{BOARD}/projects/{PROJECT}/tasks/{TASK}` |
-| List projects | GET | `/api/boards/{BOARD}/projects` |
-| List tasks | GET | `/api/boards/{BOARD}/tasks` |
-| SSE events | GET | `/api/boards/{BOARD}/events` |
+| Action | CLI Command |
+|--------|-------------|
+| Register | `./bin/agentboard register {AGENT_NAME} "AI coding agent"` |
+| Heartbeat | `./bin/agentboard heartbeat "message"` |
+| Create task | `./bin/agentboard task create {PROJECT_ID} "Task title" high` |
+| Mark in progress | `./bin/agentboard task start {PROJECT_ID} {TASK_ID}` |
+| Mark done | `./bin/agentboard task done {PROJECT_ID} {TASK_ID}` |
+| Mark blocked | `./bin/agentboard task block {PROJECT_ID} {TASK_ID}` |
+| View status | `./bin/agentboard status` |
+| SSE events | `curl -N {AGENTBOARD_URL}/api/boards/{BOARD_ID}/events` |

@@ -97,6 +97,10 @@ curl -X POST http://localhost:4040/api/boards/my-board/agents/my-agent/heartbeat
 
 The included `bin/agentboard` CLI wraps the API for shell-based agents:
 
+> Tip for permissioned runtimes (Codex/Cursor/Claude Code): approve the
+> `./bin/agentboard` command prefix once, then all reporting calls can run
+> without repeated permission prompts.
+
 ```bash
 # Create a .agentboard config file (auto-sourced by the CLI)
 cp .agentboard.example .agentboard

@@ -12,30 +12,34 @@ You are an AI agent reporting your progress to Agentboard at `{AGENTBOARD_URL}`.
 
 Board: `{BOARD_ID}` | Agent: `{AGENT_ID}`
 
+Use `./bin/agentboard` for reporting (not raw `curl`) when your runtime has
+permission prompts. A single approved command prefix can then cover all updates.
+
 ### Register (once per session)
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/agents \
-  -H "Content-Type: application/json" \
-  -d '{"name": "{AGENT_ID}", "description": "AI agent", "metadata": {}}'
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL={AGENTBOARD_URL}
+AGENTBOARD_BOARD={BOARD_ID}
+AGENTBOARD_AGENT={AGENT_ID}
+EOF
+./bin/agentboard register {AGENT_ID} "AI agent"
 ```
 
 ### Heartbeat (frequently)
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/agents/{AGENT_ID}/heartbeat \
-  -H "Content-Type: application/json" -d '{"message": "what you are doing"}'
+./bin/agentboard heartbeat "what you are doing"
 ```
 
 ### Create task
 ```bash
-curl -s -X POST {AGENTBOARD_URL}/api/boards/{BOARD_ID}/projects/{PROJECT_ID}/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title": "...", "assigneeAgentId": "{AGENT_ID}", "priority": "medium"}'
+./bin/agentboard task create {PROJECT_ID} "..." medium
 ```
 
 ### Update task (todo | in_progress | done | blocked)
 ```bash
-curl -s -X PATCH {AGENTBOARD_URL}/api/boards/{BOARD_ID}/projects/{PROJECT_ID}/tasks/{TASK_ID} \
-  -H "Content-Type: application/json" -d '{"status": "in_progress"}'
+./bin/agentboard task start {PROJECT_ID} {TASK_ID}
+./bin/agentboard task done {PROJECT_ID} {TASK_ID}
+./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 ```
 
 Report at start of work, on milestones, when done, and if blocked.

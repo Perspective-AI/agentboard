@@ -15,21 +15,33 @@ When working on this project, report your progress to Agentboard:
 - **Board**: \`${boardId}\`
 - **Agent**: \`${agentName}\`
 
+Use \`./bin/agentboard\` for reporting (not raw \`curl\`) so Claude Code can
+approve one stable command prefix once and run future updates without repeated
+prompts.
+
 ### How to report
 
 \`\`\`bash
+# .agentboard config
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL=${url}
+AGENTBOARD_BOARD=${boardId}
+AGENTBOARD_AGENT=${agentName}
+EOF
+
+# Register once per session
+./bin/agentboard register ${agentName} "Claude Code agent"
+
 # Heartbeat — send frequently
-curl -s -X POST ${url}/api/boards/${boardId}/agents/${agentName}/heartbeat \\
-  -H "Content-Type: application/json" -d '{"message": "what you are doing"}'
+./bin/agentboard heartbeat "what you are doing"
 
 # Create task
-curl -s -X POST ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks \\
-  -H "Content-Type: application/json" \\
-  -d '{"title": "...", "assigneeAgentId": "${agentName}", "priority": "medium"}'
+./bin/agentboard task create {PROJECT_ID} "..." medium
 
-# Update task status (in_progress | done | blocked)
-curl -s -X PATCH ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks/{TASK_ID} \\
-  -H "Content-Type: application/json" -d '{"status": "in_progress"}'
+# Update task status
+./bin/agentboard task start {PROJECT_ID} {TASK_ID}
+./bin/agentboard task done {PROJECT_ID} {TASK_ID}
+./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 \`\`\`
 
 Report at the start of work, on milestones, and when completing tasks.
@@ -41,23 +53,34 @@ Report at the start of work, on milestones, and when completing tasks.
     contentType: "text/plain",
     generate: (url, boardId, agentName) => `# Agentboard Status Reporting
 
-You are an AI agent reporting progress to Agentboard. Use cURL to report status.
+You are an AI agent reporting progress to Agentboard.
+Use ./bin/agentboard for reporting (not raw curl) so your runtime can approve
+one stable command prefix once and run future updates without repeated prompts.
 
 - Agentboard URL: ${url}
 - Board: ${boardId}
 - Agent: ${agentName}
 
+Create a .agentboard file:
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL=${url}
+AGENTBOARD_BOARD=${boardId}
+AGENTBOARD_AGENT=${agentName}
+EOF
+
 At the start of every session, register yourself (idempotent):
-curl -s -X POST ${url}/api/boards/${boardId}/agents -H "Content-Type: application/json" -d '{"name": "${agentName}", "description": "Cursor AI agent", "metadata": {"editor": "cursor"}}'
+./bin/agentboard register ${agentName} "Cursor AI agent"
 
 Send heartbeats to report what you are doing:
-curl -s -X POST ${url}/api/boards/${boardId}/agents/${agentName}/heartbeat -H "Content-Type: application/json" -d '{"message": "description of current work"}'
+./bin/agentboard heartbeat "description of current work"
 
 Create tasks when starting new work:
-curl -s -X POST ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks -H "Content-Type: application/json" -d '{"title": "task title", "assigneeAgentId": "${agentName}", "priority": "medium"}'
+./bin/agentboard task create {PROJECT_ID} "task title" medium
 
 Update task status as you work (statuses: todo, in_progress, done, blocked):
-curl -s -X PATCH ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks/{TASK_ID} -H "Content-Type: application/json" -d '{"status": "in_progress"}'
+./bin/agentboard task start {PROJECT_ID} {TASK_ID}
+./bin/agentboard task done {PROJECT_ID} {TASK_ID}
+./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 
 Report at the start of work, on milestones, when completing tasks, and if blocked.
 `,
@@ -72,30 +95,34 @@ You are an AI agent reporting progress to Agentboard at \`${url}\`.
 
 Board: \`${boardId}\` | Agent: \`${agentName}\`
 
+Use \`./bin/agentboard\` for reporting (not raw \`curl\`) so Codex can approve
+one stable command prefix once and run future updates without repeated prompts.
+
 ### Register (once per session)
 \`\`\`bash
-curl -s -X POST ${url}/api/boards/${boardId}/agents \\
-  -H "Content-Type: application/json" \\
-  -d '{"name": "${agentName}", "description": "OpenAI Codex agent", "metadata": {"runtime": "codex"}}'
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL=${url}
+AGENTBOARD_BOARD=${boardId}
+AGENTBOARD_AGENT=${agentName}
+EOF
+./bin/agentboard register ${agentName} "OpenAI Codex agent"
 \`\`\`
 
 ### Heartbeat (frequently)
 \`\`\`bash
-curl -s -X POST ${url}/api/boards/${boardId}/agents/${agentName}/heartbeat \\
-  -H "Content-Type: application/json" -d '{"message": "what you are doing"}'
+./bin/agentboard heartbeat "what you are doing"
 \`\`\`
 
 ### Create task
 \`\`\`bash
-curl -s -X POST ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks \\
-  -H "Content-Type: application/json" \\
-  -d '{"title": "...", "assigneeAgentId": "${agentName}", "priority": "medium"}'
+./bin/agentboard task create {PROJECT_ID} "..." medium
 \`\`\`
 
 ### Update task (todo | in_progress | done | blocked)
 \`\`\`bash
-curl -s -X PATCH ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks/{TASK_ID} \\
-  -H "Content-Type: application/json" -d '{"status": "in_progress"}'
+./bin/agentboard task start {PROJECT_ID} {TASK_ID}
+./bin/agentboard task done {PROJECT_ID} {TASK_ID}
+./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 \`\`\`
 
 Report at start of work, on milestones, when done, and if blocked.
@@ -111,17 +138,27 @@ You are an AI agent reporting progress to Agentboard at \`${url}\`.
 
 Board: \`${boardId}\` | Agent: \`${agentName}\`
 
+Use \`./bin/agentboard\` for reporting (not raw \`curl\`) when your runtime has
+permission prompts. A single approved command prefix can then cover all updates.
+
 ## Register (once per session)
-curl -s -X POST ${url}/api/boards/${boardId}/agents -H "Content-Type: application/json" -d '{"name": "${agentName}", "description": "AI agent", "metadata": {}}'
+cat > .agentboard <<'EOF'
+AGENTBOARD_URL=${url}
+AGENTBOARD_BOARD=${boardId}
+AGENTBOARD_AGENT=${agentName}
+EOF
+./bin/agentboard register ${agentName} "AI agent"
 
 ## Heartbeat (frequently)
-curl -s -X POST ${url}/api/boards/${boardId}/agents/${agentName}/heartbeat -H "Content-Type: application/json" -d '{"message": "what you are doing"}'
+./bin/agentboard heartbeat "what you are doing"
 
 ## Create task
-curl -s -X POST ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks -H "Content-Type: application/json" -d '{"title": "...", "assigneeAgentId": "${agentName}", "priority": "medium"}'
+./bin/agentboard task create {PROJECT_ID} "..." medium
 
 ## Update task (todo | in_progress | done | blocked)
-curl -s -X PATCH ${url}/api/boards/${boardId}/projects/{PROJECT_ID}/tasks/{TASK_ID} -H "Content-Type: application/json" -d '{"status": "in_progress"}'
+./bin/agentboard task start {PROJECT_ID} {TASK_ID}
+./bin/agentboard task done {PROJECT_ID} {TASK_ID}
+./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 
 Report at start of work, on milestones, when done, and if blocked.
 `,

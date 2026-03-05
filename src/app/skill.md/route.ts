@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 
 const SKILL_RELEASE = {
-  version: "0.4.0",
-  updatedAt: "2026-03-05T05:18:00-08:00",
+  version: "0.4.1",
+  updatedAt: "2026-03-05T12:00:00-08:00",
 };
 
 export async function GET(request: NextRequest) {
@@ -49,6 +49,8 @@ homepage: https://agentboard.sh
 > **Board:** \`${boardId}\`
 
 Keep the board updated as you work. This is how humans track what you're doing.
+
+> **Source of truth:** Task and plan status updates are the source of truth for your progress. Heartbeat is liveness only — do not use it for progress reporting. If you have internal task-tracking tools (e.g. \`TaskCreate\`/\`TaskUpdate\` in Claude Code), those are for your own use — they do NOT report to agentboard. You must use the \`./bin/agentboard\` CLI.
 
 ## Skill updates
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
+import { internalError } from "@/lib/api-utils";
 
 type Params = { params: Promise<{ boardId: string }> };
 
@@ -16,6 +17,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const tasks = await storage.listAllBoardTasks(boardId, filters);
     return NextResponse.json({ ok: true, data: tasks });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("GET /tasks:", err);
+    return internalError();
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
 function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
@@ -18,15 +18,41 @@ function formatTimeAgo(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-export function TimeAgo({ date }: { date: string }) {
-  const [text, setText] = useState(() => formatTimeAgo(date));
+// Single shared timer — one interval for all TimeAgo instances
+let tick = 0;
+const listeners = new Set<() => void>();
+let intervalId: ReturnType<typeof setInterval> | null = null;
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setText(formatTimeAgo(date));
+function subscribe(callback: () => void): () => void {
+  listeners.add(callback);
+  if (listeners.size === 1 && !intervalId) {
+    intervalId = setInterval(() => {
+      tick += 1;
+      for (const listener of listeners) listener();
     }, 10000);
-    return () => clearInterval(interval);
-  }, [date]);
+  }
+  return () => {
+    listeners.delete(callback);
+    if (listeners.size === 0 && intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+}
+
+function getSnapshot(): number {
+  return tick;
+}
+
+function getServerSnapshot(): number {
+  return 0;
+}
+
+export function TimeAgo({ date }: { date: string }) {
+  const currentTick = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  // currentTick triggers re-render on each interval tick
+  void currentTick;
+  const text = formatTimeAgo(date);
 
   return (
     <time dateTime={date} title={new Date(date).toLocaleString()} className="text-xs text-muted-foreground">

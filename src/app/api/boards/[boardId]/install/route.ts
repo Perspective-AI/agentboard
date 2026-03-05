@@ -234,8 +234,9 @@ export async function GET(request: NextRequest, { params }: Params) {
       },
     });
   } catch (err) {
+    console.error("GET /install:", err);
     return NextResponse.json(
-      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
+      { ok: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
       { status: 500 }
     );
   }

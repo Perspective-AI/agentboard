@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import type { Agent, Task } from "@/lib/types";
 import { AgentCard } from "./agent-card";
 import { EmptyState } from "@/components/common/empty-state";
@@ -32,6 +32,20 @@ export function AgentList({ agents, tasks }: AgentListProps) {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  const { activeAgents, pastAgents } = useMemo(() => {
+    const sorted = [...agents].sort((a, b) => b.lastHeartbeat.localeCompare(a.lastHeartbeat));
+    const active: Agent[] = [];
+    const past: Agent[] = [];
+    for (const agent of sorted) {
+      if (isActivelyReporting(agent, nowMs)) {
+        active.push(agent);
+      } else {
+        past.push(agent);
+      }
+    }
+    return { activeAgents: active, pastAgents: past };
+  }, [agents, nowMs]);
+
   if (agents.length === 0) {
     return (
       <EmptyState
@@ -39,17 +53,6 @@ export function AgentList({ agents, tasks }: AgentListProps) {
         description="Agents register themselves via the API. Share the board URL with your agents to get started."
       />
     );
-  }
-
-  const sortedByHeartbeat = [...agents].sort((a, b) => b.lastHeartbeat.localeCompare(a.lastHeartbeat));
-  const activeAgents: Agent[] = [];
-  const pastAgents: Agent[] = [];
-  for (const agent of sortedByHeartbeat) {
-    if (isActivelyReporting(agent, nowMs)) {
-      activeAgents.push(agent);
-    } else {
-      pastAgents.push(agent);
-    }
   }
 
   return (

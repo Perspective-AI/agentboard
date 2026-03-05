@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import type { Task } from "@/lib/types";
+import { useState, useMemo } from "react";
 import { useBoardContext } from "@/components/board/board-data-provider";
 import { ProjectBoard } from "@/components/board/project-board";
 import { TaskDetail } from "@/components/board/task-detail";
 
 export default function InitiativesPage() {
   const { initiatives, tasks, agents } = useBoardContext();
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  const selectedTask = useMemo(
+    () => (selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null),
+    [selectedTaskId, tasks],
+  );
 
   return (
     <>
@@ -16,12 +20,12 @@ export default function InitiativesPage() {
         projects={initiatives}
         tasks={tasks}
         agents={agents}
-        onTaskClick={setSelectedTask}
+        onTaskClick={(task) => setSelectedTaskId(task.id)}
       />
       <TaskDetail
         task={selectedTask}
         agents={agents}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
       />
     </>
   );

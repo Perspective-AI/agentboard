@@ -68,7 +68,7 @@ api() {
 }
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  printf '%s' "$1" | python3 -c 'import sys,json; sys.stdout.write(json.dumps(sys.stdin.read())[1:-1])'
 }
 
 trim_space() {
@@ -234,7 +234,17 @@ case "${1:-help}" in
       exit 1
     fi
 
-    RUNTIME="${AGENTBOARD_RUNTIME:-codex}"
+    if [ -z "${AGENTBOARD_RUNTIME:-}" ]; then
+      if [ -n "${CLAUDE_CODE:-}" ]; then
+        RUNTIME="claude-code"
+      elif [ -n "${CURSOR:-}" ]; then
+        RUNTIME="cursor"
+      else
+        RUNTIME="unknown"
+      fi
+    else
+      RUNTIME="$AGENTBOARD_RUNTIME"
+    fi
     HOST_NAME="${AGENTBOARD_HOST:-$(hostname 2>/dev/null || echo unknown-host)}"
     USER_NAME="${AGENTBOARD_USER:-${USER:-unknown-user}}"
     MODEL_NAME="$(detect_model_name "$RUNTIME")"
@@ -274,7 +284,7 @@ case "${1:-help}" in
 
   heartbeat|hb)
     if [ -z "$AGENT" ]; then echo "Error: set AGENTBOARD_AGENT" >&2; exit 1; fi
-    MSG="${2:-alive}"
+    MSG="$(json_escape "${2:-alive}")"
     api POST "/api/boards/${BOARD}/agents/${AGENT}/heartbeat" \
       "{\"message\":\"${MSG}\"}"
     ;;
@@ -282,8 +292,8 @@ case "${1:-help}" in
   initiative)
     case "${2:-}" in
       create)
-        NAME="${3:?initiative name required}"
-        KIND="${4:-thread}"
+        NAME="$(json_escape "${3:?initiative name required}")"
+        KIND="$(json_escape "${4:-thread}")"
         api POST "/api/boards/${BOARD}/initiatives" \
           "{\"name\":\"${NAME}\",\"kind\":\"${KIND}\"}"
         ;;
@@ -302,7 +312,7 @@ case "${1:-help}" in
     case "${2:-}" in
       create)
         INITIATIVE="${3:?initiative-id required}"
-        TITLE="${4:?plan title required}"
+        TITLE="$(json_escape "${4:?plan title required}")"
         api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans" \
           "{\"title\":\"${TITLE}\",\"ownerAgentId\":\"${AGENT}\"}"
         ;;
@@ -341,7 +351,7 @@ case "${1:-help}" in
       create)
         INITIATIVE="${3:?initiative-id required}"
         PLAN="${4:?plan-id required}"
-        TITLE="${5:?step title required}"
+        TITLE="$(json_escape "${5:?step title required}")"
         ORDER="${6:-}"
         if [ -n "$ORDER" ]; then
           api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps" \
@@ -389,7 +399,7 @@ case "${1:-help}" in
     case "${2:-}" in
       create)
         INITIATIVE="${3:?initiative-id required}"
-        TITLE="${4:?title required}"
+        TITLE="$(json_escape "${4:?title required}")"
         PRIORITY="${5:-medium}"
         api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/tasks" \
           "{\"title\":\"${TITLE}\",\"assigneeAgentId\":\"${AGENT}\",\"actorAgentId\":\"${AGENT}\",\"priority\":\"${PRIORITY}\"}"

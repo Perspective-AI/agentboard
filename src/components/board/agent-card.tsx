@@ -164,7 +164,7 @@ export function AgentCard({ agent, tasks }: AgentCardProps) {
   return (
     <Card className="p-4 gap-0">
       <div className="flex items-center gap-2 mb-2 flex-wrap">
-        <div className={`w-2 h-2 rounded-full ${statusDotColor[agent.status]}`} />
+        <div className={`w-2 h-2 rounded-full ${statusDotColor[agent.status]}`} role="img" aria-label={`Status: ${agent.status}`} />
         <h4 className="text-sm font-medium text-foreground truncate">{agent.name}</h4>
         {intro && ModelIcon ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2 py-0.5 text-[11px] text-foreground/90">

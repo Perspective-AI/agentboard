@@ -7,24 +7,27 @@ import { TimeAgo } from "@/components/common/time-ago";
 
 interface TaskCardProps {
   task: Task;
-  agents: Agent[];
+  agentsById: Map<string, Agent>;
   onClick: (task: Task) => void;
 }
 
-export function TaskCard({ task, agents, onClick }: TaskCardProps) {
+export function TaskCard({ task, agentsById, onClick }: TaskCardProps) {
   const assigneeIds = task.assigneeAgentIds?.length
     ? task.assigneeAgentIds
     : task.assigneeAgentId
       ? [task.assigneeAgentId]
       : [];
   const assignees = assigneeIds
-    .map((id) => agents.find((a) => a.id === id))
+    .map((id) => agentsById.get(id))
     .filter((agent): agent is Agent => Boolean(agent));
 
   return (
     <Card
+      tabIndex={0}
+      role="button"
       className="p-3 cursor-pointer hover:shadow-md transition-shadow border-border gap-0"
       onClick={() => onClick(task)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(task); } }}
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <h4 className="text-sm font-medium text-foreground leading-snug line-clamp-2">

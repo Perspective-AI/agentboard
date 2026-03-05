@@ -206,8 +206,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         { status }
       );
     }
+    console.error("POST /webhook:", err);
     return NextResponse.json(
-      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
+      { ok: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
       { status: 500 }
     );
   }

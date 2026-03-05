@@ -6,22 +6,18 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function slugify(text: string): string {
-  return text
+  const slug = text
     .toLowerCase()
     .trim()
     .replace(/[^\w\s-]/g, "")
     .replace(/[\s_]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
+  // Guard against empty result (e.g. all-emoji or all-symbol input)
+  if (!slug) return Date.now().toString(36);
+  return slug;
 }
 
 export function timestamp(): string {
   return new Date().toISOString();
-}
-
-import path from "path";
-import os from "os";
-
-export function getDataDir(): string {
-  return process.env.AGENTBOARD_DATA_DIR || path.join(os.homedir(), ".agentboard", "data");
 }

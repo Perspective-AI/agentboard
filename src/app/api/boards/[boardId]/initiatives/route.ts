@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 import { sseHub } from "@/lib/sse/hub";
+import { parseJsonBody, internalError } from "@/lib/api-utils";
+import type { Initiative } from "@/lib/types";
 
 type Params = { params: Promise<{ boardId: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { boardId } = await params;
-    const body = await request.json();
+    const parsed = await parseJsonBody(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data as Record<string, unknown>;
 
     if (!body.name) {
       return NextResponse.json(
@@ -26,11 +30,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const initiative = await storage.createInitiative(boardId, {
-      name: body.name,
-      description: body.description || "",
-      kind: body.kind,
-      status: body.status,
-      assigneeAgentIds: body.assigneeAgentIds || [],
+      name: body.name as string,
+      description: (body.description as string) || "",
+      kind: body.kind as Initiative["kind"] | undefined,
+      status: body.status as Initiative["status"] | undefined,
+      assigneeAgentIds: (body.assigneeAgentIds as string[]) || [],
     });
 
     sseHub.broadcast(boardId, "initiative:created", initiative);
@@ -38,10 +42,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: initiative }, { status: 201 });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
-      { status: 500 },
-    );
+    console.error("POST /initiatives:", err);
+    return internalError();
   }
 }
 
@@ -52,9 +54,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const initiatives = await storage.listInitiatives(boardId);
     return NextResponse.json({ ok: true, data: initiatives });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
-      { status: 500 },
-    );
+    console.error("GET /initiatives:", err);
+    return internalError();
   }
 }

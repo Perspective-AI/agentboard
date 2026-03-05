@@ -17,7 +17,7 @@ export function Sidebar() {
         if (data.ok) setBoards(data.data);
       })
       .catch(() => {});
-  }, [pathname]);
+  }, []);
 
   return (
     <aside className="w-56 border-r border-border bg-sidebar flex flex-col h-screen shrink-0">

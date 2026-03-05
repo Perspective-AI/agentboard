@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 import { sseHub } from "@/lib/sse/hub";
+import { parseJsonBody, internalError } from "@/lib/api-utils";
+import type { TaskPriority } from "@/lib/types";
 
 type Params = { params: Promise<{ boardId: string; initiativeId: string }> };
 
 export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId } = await params;
-    const body = await request.json();
+    const parsed = await parseJsonBody(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data as Record<string, unknown>;
     const actorAgentId = typeof body.actorAgentId === "string" ? body.actorAgentId.trim() : "";
 
     if (!body.title) {
@@ -40,24 +44,22 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
 
     const task = await storage.createTask(boardId, initiativeId, {
-      title: body.title,
-      description: body.description || "",
-      planId: body.planId || null,
-      planStepId: body.planStepId || null,
-      assigneeAgentId: body.assigneeAgentId || null,
-      assigneeAgentIds: body.assigneeAgentIds || [],
-      deliverables: body.deliverables || [],
-      priority: body.priority || "medium",
-      tags: body.tags || [],
+      title: body.title as string,
+      description: (body.description as string) || "",
+      planId: (body.planId as string) || null,
+      planStepId: (body.planStepId as string) || null,
+      assigneeAgentId: (body.assigneeAgentId as string) || null,
+      assigneeAgentIds: (body.assigneeAgentIds as string[]) || [],
+      deliverables: (body.deliverables as string[]) || [],
+      priority: (body.priority as TaskPriority) || "medium",
+      tags: (body.tags as string[]) || [],
     }, actor.id);
 
     sseHub.broadcast(boardId, "task:created", task);
     return NextResponse.json({ ok: true, data: task }, { status: 201 });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
-      { status: 500 },
-    );
+    console.error("POST /tasks:", err);
+    return internalError();
   }
 }
 
@@ -75,9 +77,7 @@ export async function GET(request: NextRequest, { params }: Params) {
 
     return NextResponse.json({ ok: true, data: tasks });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
-      { status: 500 },
-    );
+    console.error("GET /tasks:", err);
+    return internalError();
   }
 }

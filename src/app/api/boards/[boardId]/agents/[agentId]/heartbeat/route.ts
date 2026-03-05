@@ -19,7 +19,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!agent) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Agent not found" } }, { status: 404 });
     }
+    const [latestHeartbeatEvent] = await storage.listActivity(boardId, { limit: 1, agentId });
     sseHub.broadcast(boardId, "agent:updated", agent);
+    if (latestHeartbeatEvent?.type === "agent.heartbeat") {
+      sseHub.broadcast(boardId, "activity:logged", latestHeartbeatEvent);
+    }
     return NextResponse.json({ ok: true, data: agent });
   } catch (err) {
     return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });

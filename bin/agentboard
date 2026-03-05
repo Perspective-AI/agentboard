@@ -28,14 +28,18 @@
 #   AGENTBOARD_URL   — Server URL (default: http://localhost:4040)
 #   AGENTBOARD_BOARD — Board ID (default: agentboard)
 #   AGENTBOARD_AGENT — Agent ID (required for most commands)
+#   AGENTBOARD_SESSION_KEY — Optional explicit session key (random by default)
+#   AGENTBOARD_TRACE_API_CALLS — 1 to log each CLI API call via heartbeat (default: 1)
 
 set -euo pipefail
 
 # Auto-source config from project root (walk up to find .agentboard)
 _dir="$(pwd)"
+CONFIG_DIR="$(pwd)"
 while [ "$_dir" != "/" ]; do
   if [ -f "$_dir/.agentboard" ]; then
     source "$_dir/.agentboard"
+    CONFIG_DIR="$_dir"
     break
   fi
   _dir="$(dirname "$_dir")"
@@ -46,9 +50,179 @@ BOARD="${AGENTBOARD_BOARD:-agentboard}"
 AGENT="${AGENTBOARD_AGENT:-}"
 
 api() {
-  curl -s -X "$1" "${URL}${2}" \
+  local method="$1"
+  local route="$2"
+  local payload="${3:-}"
+
+  trace_api_call "$method" "$route"
+
+  if [ -n "$payload" ]; then
+    curl -s -X "$method" "${URL}${route}" \
+      -H "Content-Type: application/json" \
+      -d "$payload"
+    return
+  fi
+
+  curl -s -X "$method" "${URL}${route}" \
+    -H "Content-Type: application/json"
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+trim_space() {
+  printf '%s' "$1" | tr -d '[:space:]'
+}
+
+trace_api_call() {
+  local method="$1"
+  local route="$2"
+  local trace_enabled="${AGENTBOARD_TRACE_API_CALLS:-1}"
+
+  if [ "$trace_enabled" != "1" ]; then
+    return
+  fi
+  if [ -z "${AGENT:-}" ]; then
+    return
+  fi
+  if [ "$route" = "/api/boards/${BOARD}/agents/${AGENT}/heartbeat" ]; then
+    return
+  fi
+
+  local command_value="${method} ${route}"
+  local message="command=${command_value}; status=submitted; description=CLI API call"
+  local message_json
+  message_json="$(json_escape "$message")"
+
+  curl -s -X POST "${URL}/api/boards/${BOARD}/agents/${AGENT}/heartbeat" \
     -H "Content-Type: application/json" \
-    ${3:+-d "$3"}
+    -d "{\"message\":\"${message_json}\"}" >/dev/null 2>&1 || true
+}
+
+detect_local_ip() {
+  if [ -n "${AGENTBOARD_LOCAL_IP:-}" ]; then
+    printf '%s' "${AGENTBOARD_LOCAL_IP}"
+    return
+  fi
+
+  if command -v route >/dev/null 2>&1 && command -v ipconfig >/dev/null 2>&1; then
+    local iface
+    iface="$(route -n get default 2>/dev/null | awk '/interface:/{print $2; exit}')"
+    if [ -n "$iface" ]; then
+      local ip
+      ip="$(ipconfig getifaddr "$iface" 2>/dev/null || true)"
+      if [ -n "$ip" ]; then
+        printf '%s' "$ip"
+        return
+      fi
+    fi
+    local en0_ip
+    en0_ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
+    if [ -n "$en0_ip" ]; then
+      printf '%s' "$en0_ip"
+      return
+    fi
+  fi
+
+  if command -v hostname >/dev/null 2>&1; then
+    local host_ip
+    host_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    if [ -n "$host_ip" ]; then
+      printf '%s' "$host_ip"
+      return
+    fi
+  fi
+
+  printf '%s' "unknown-local-ip"
+}
+
+detect_codex_model() {
+  local codex_home="${CODEX_HOME:-$HOME/.codex}"
+  local config_file="${CODEX_CONFIG_FILE:-${codex_home}/config.toml}"
+
+  if [ ! -f "$config_file" ]; then
+    printf '%s' ""
+    return
+  fi
+
+  local model_line
+  model_line="$(sed -n 's/^[[:space:]]*model[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$config_file" | head -n 1)"
+  printf '%s' "${model_line}"
+}
+
+detect_model_name() {
+  local runtime="$1"
+  local explicit="${AGENTBOARD_MODEL:-${OPENAI_MODEL:-${MODEL:-${CODEX_MODEL:-${ANTHROPIC_MODEL:-}}}}}"
+  if [ -n "$explicit" ]; then
+    printf '%s' "$explicit"
+    return
+  fi
+
+  if [ "$runtime" = "codex" ]; then
+    local codex_model
+    codex_model="$(detect_codex_model)"
+    if [ -n "$codex_model" ]; then
+      printf '%s' "$codex_model"
+      return
+    fi
+  fi
+
+  case "$runtime" in
+    codex)
+      printf '%s' "codex"
+      ;;
+    claude*|anthropic)
+      printf '%s' "claude"
+      ;;
+    cursor)
+      printf '%s' "cursor"
+      ;;
+    *)
+      printf '%s' "unknown-model"
+      ;;
+  esac
+}
+
+generate_session_key() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 24
+    return
+  fi
+  if command -v hexdump >/dev/null 2>&1 && [ -r /dev/urandom ]; then
+    hexdump -n 24 -e '24/1 "%02x"' /dev/urandom
+    return
+  fi
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-'
+    return
+  fi
+  printf '%s' ""
+}
+
+load_or_create_session_key() {
+  local key_file="${AGENTBOARD_SESSION_KEY_FILE:-${CONFIG_DIR}/.agentboard-session-key}"
+  local existing=""
+
+  if [ -f "$key_file" ]; then
+    existing="$(trim_space "$(cat "$key_file")")"
+    if [ -n "$existing" ]; then
+      printf '%s' "$existing"
+      return
+    fi
+  fi
+
+  local generated
+  generated="$(generate_session_key)"
+
+  if [ -n "$generated" ]; then
+    (umask 077 && printf '%s\n' "$generated" > "$key_file") 2>/dev/null || true
+    printf '%s' "$generated"
+    return
+  fi
+
+  echo "Error: unable to generate a secure random session key. Set AGENTBOARD_SESSION_KEY manually." >&2
+  return 1
 }
 
 case "${1:-help}" in
@@ -59,8 +233,43 @@ case "${1:-help}" in
       echo "Error: provide agent name or set AGENTBOARD_AGENT" >&2
       exit 1
     fi
+
+    RUNTIME="${AGENTBOARD_RUNTIME:-codex}"
+    HOST_NAME="${AGENTBOARD_HOST:-$(hostname 2>/dev/null || echo unknown-host)}"
+    USER_NAME="${AGENTBOARD_USER:-${USER:-unknown-user}}"
+    MODEL_NAME="$(detect_model_name "$RUNTIME")"
+    THREAD_ID="${AGENTBOARD_THREAD_ID:-${AGENTBOARD_THREAD:-${CODEX_THREAD_ID:-${CLAUDE_THREAD_ID:-${CURSOR_THREAD_ID:-unknown-thread}}}}}"
+    THREAD_NAME="${CODEX_THREAD_NAME:-${CLAUDE_THREAD_NAME:-${CURSOR_THREAD_NAME:-${THREAD_ID}}}}"
+    THREAD_SOURCE="${RUNTIME}"
+    WORKING_DIRECTORY="${AGENTBOARD_WORKDIR:-${PWD}}"
+    LOCAL_IP="$(detect_local_ip)"
+    SESSION_KEY="${AGENTBOARD_SESSION_KEY:-${AGENTBOARD_INSTANCE_KEY:-}}"
+    if [ -z "$SESSION_KEY" ]; then
+      SESSION_KEY="$(load_or_create_session_key)"
+    fi
+    SESSION_KEY="$(trim_space "$SESSION_KEY")"
+    if [ -z "$SESSION_KEY" ]; then
+      echo "Error: session key is empty. Set AGENTBOARD_SESSION_KEY or regenerate." >&2
+      exit 1
+    fi
+    STARTED_AT="${AGENTBOARD_STARTED_AT:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+
+    NAME_JSON="$(json_escape "$NAME")"
+    DESC_JSON="$(json_escape "$DESC")"
+    RUNTIME_JSON="$(json_escape "$RUNTIME")"
+    HOST_JSON="$(json_escape "$HOST_NAME")"
+    USER_JSON="$(json_escape "$USER_NAME")"
+    MODEL_JSON="$(json_escape "$MODEL_NAME")"
+    THREAD_ID_JSON="$(json_escape "$THREAD_ID")"
+    THREAD_NAME_JSON="$(json_escape "$THREAD_NAME")"
+    THREAD_SOURCE_JSON="$(json_escape "$THREAD_SOURCE")"
+    WORKDIR_JSON="$(json_escape "$WORKING_DIRECTORY")"
+    LOCAL_IP_JSON="$(json_escape "$LOCAL_IP")"
+    KEY_JSON="$(json_escape "$SESSION_KEY")"
+    STARTED_AT_JSON="$(json_escape "$STARTED_AT")"
+
     api POST "/api/boards/${BOARD}/agents" \
-      "{\"name\":\"${NAME}\",\"description\":\"${DESC}\",\"metadata\":{}}"
+      "{\"name\":\"${NAME_JSON}\",\"description\":\"${DESC_JSON}\",\"metadata\":{\"intro\":{\"runtime\":\"${RUNTIME_JSON}\",\"sessionKey\":\"${KEY_JSON}\",\"model\":\"${MODEL_JSON}\",\"thread\":{\"id\":\"${THREAD_ID_JSON}\",\"name\":\"${THREAD_NAME_JSON}\",\"source\":\"${THREAD_SOURCE_JSON}\"},\"workingDirectory\":\"${WORKDIR_JSON}\",\"host\":{\"hostname\":\"${HOST_JSON}\",\"localIp\":\"${LOCAL_IP_JSON}\"},\"user\":\"${USER_JSON}\",\"startedAt\":\"${STARTED_AT_JSON}\"}}}"
     ;;
 
   heartbeat|hb)
@@ -239,7 +448,7 @@ case "${1:-help}" in
     echo ""
     echo "Commands:"
     echo "  register [name] [desc]            Register agent to board"
-    echo "  heartbeat <message>               Send heartbeat with status"
+    echo "  heartbeat <message>               Send liveness/status heartbeat"
     echo "  initiative create <name> [kind]   Create initiative"
     echo "  initiative list                   List initiatives"
     echo "  plan create <init> <title>        Create plan"
@@ -259,7 +468,11 @@ case "${1:-help}" in
     echo "  activity [limit]                  Show recent activity events"
     echo "  status                            Show board, agent, initiatives, tasks, activity"
     echo ""
-    echo "Environment: AGENTBOARD_URL, AGENTBOARD_BOARD, AGENTBOARD_AGENT"
+    echo "Environment:"
+    echo "  AGENTBOARD_URL, AGENTBOARD_BOARD, AGENTBOARD_AGENT"
+    echo "  AGENTBOARD_SESSION_KEY (optional; random key auto-generated if omitted)"
+    echo "  Optional advanced overrides: AGENTBOARD_WORKDIR, AGENTBOARD_LOCAL_IP"
+    echo "  AGENTBOARD_TRACE_API_CALLS=1 (default; emits command/status/description heartbeat per API call)"
     ;;
 
   *)

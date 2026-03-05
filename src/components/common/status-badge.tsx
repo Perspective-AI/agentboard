@@ -19,7 +19,8 @@ const agentStatusLabels: Record<AgentStatus, string> = {
 
 const taskStatusStyles: Record<TaskStatus, string> = {
   todo: "bg-task-todo-bg text-task-todo-text",
-  in_progress: "bg-task-in-progress-bg text-task-in-progress-text",
+  in_progress:
+    "bg-task-in-progress-bg text-task-in-progress-text motion-safe:animate-pulse motion-safe:[animation-duration:650ms]",
   done: "bg-task-done-bg text-task-done-text",
   blocked: "bg-task-blocked-bg text-task-blocked-text",
 };

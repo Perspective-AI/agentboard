@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
-import { sseHub } from "@/lib/sse/hub";
 
 export async function POST(request: NextRequest) {
   try {

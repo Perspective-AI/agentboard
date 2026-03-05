@@ -24,6 +24,10 @@ Before starting work, register yourself with the board:
 ./bin/agentboard register {AGENT_NAME} "AI coding agent"
 ```
 
+The CLI auto-generates a secure random session key on first register and stores
+it in `.agentboard-session-key` (reused for idempotent re-registers).
+It also auto-detects runtime/model/thread/workspace metadata when available.
+
 Replace:
 - `{AGENTBOARD_URL}` — the Agentboard server URL (e.g. `http://localhost:4040`)
 - `{BOARD_ID}` — the board slug you're working on
@@ -36,19 +40,30 @@ command prefix once.
 
 ## Reporting Protocol
 
-### 1. Heartbeats — report what you're doing
+### 1. API Calls — always visible in activity
 
-Send heartbeats frequently (at the start of work, when switching tasks, on milestones):
+By default, every `./bin/agentboard` API call emits a heartbeat-formatted
+activity event in `command / status / description` format so the feed shows what
+is happening in real time.
 
 ```bash
-./bin/agentboard heartbeat "short description of current activity"
+# default behavior (no extra setup required)
+AGENTBOARD_TRACE_API_CALLS=1
 ```
 
-### 2. Tasks — track your work items
+### 2. Tasks + Plans — source of truth for work
 
 **Create a task** when you start something:
 ```bash
 ./bin/agentboard task create {PROJECT_ID} "Task title" high
+```
+
+**Create and execute plans** for larger work:
+```bash
+./bin/agentboard plan create {PROJECT_ID} "Plan title"
+./bin/agentboard step create {PROJECT_ID} {PLAN_ID} "Step title" 1
+./bin/agentboard step start {PROJECT_ID} {PLAN_ID} {STEP_ID}
+./bin/agentboard step done {PROJECT_ID} {PLAN_ID} {STEP_ID}
 ```
 
 **Update task status** as you progress:
@@ -60,7 +75,15 @@ Send heartbeats frequently (at the start of work, when switching tasks, on miles
 
 Statuses: `todo` → `in_progress` → `done` (or `blocked` if stuck)
 
-### 3. Listen for events (optional)
+### 3. Heartbeats — liveness/status only
+
+Use heartbeats for lightweight liveness/status (not as a substitute for task/plan updates):
+
+```bash
+./bin/agentboard heartbeat "alive"
+```
+
+### 4. Listen for events (optional)
 
 Subscribe to real-time board events:
 ```bash
@@ -69,18 +92,19 @@ curl -N {AGENTBOARD_URL}/api/boards/{BOARD_ID}/events
 
 ## When to Report
 
-- **Always** at the start of a session — register + heartbeat
-- **Before** starting a new piece of work — create task, set in_progress
-- **During** work — heartbeat on milestones or every few minutes
-- **After** completing work — mark task done, heartbeat
-- **If blocked** — mark task blocked, heartbeat with reason
+- **Always** at the start of a session — register
+- **When planning work** — create/update plan + steps
+- **When executing work** — create/update tasks (`todo`/`in_progress`/`done`/`blocked`)
+- **Use heartbeats** — only for liveness/status
 
 ## API Reference
 
 | Action | CLI Command |
 |--------|-------------|
 | Register | `./bin/agentboard register {AGENT_NAME} "AI coding agent"` |
-| Heartbeat | `./bin/agentboard heartbeat "message"` |
+| Heartbeat (liveness) | `./bin/agentboard heartbeat "message"` |
+| Create plan | `./bin/agentboard plan create {PROJECT_ID} "Plan title"` |
+| Create plan step | `./bin/agentboard step create {PROJECT_ID} {PLAN_ID} "Step title"` |
 | Create task | `./bin/agentboard task create {PROJECT_ID} "Task title" high` |
 | Mark in progress | `./bin/agentboard task start {PROJECT_ID} {TASK_ID}` |
 | Mark done | `./bin/agentboard task done {PROJECT_ID} {TASK_ID}` |

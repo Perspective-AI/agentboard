@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Agent, Initiative, Task, TaskStatus } from "@/lib/types";
+import type { Agent, Initiative, Task } from "@/lib/types";
 import { TaskStatusBadge, PriorityBadge } from "@/components/common/status-badge";
 import { TimeAgo } from "@/components/common/time-ago";
 import { EmptyState } from "@/components/common/empty-state";

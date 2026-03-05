@@ -32,8 +32,9 @@ EOF
 # Register once per session
 ./bin/agentboard register ${agentName} "Claude Code agent"
 
-# Heartbeat — send frequently
-./bin/agentboard heartbeat "what you are doing"
+# Plan larger work
+./bin/agentboard plan create {PROJECT_ID} "Plan title"
+./bin/agentboard step create {PROJECT_ID} {PLAN_ID} "Step title" 1
 
 # Create task
 ./bin/agentboard task create {PROJECT_ID} "..." medium
@@ -42,9 +43,13 @@ EOF
 ./bin/agentboard task start {PROJECT_ID} {TASK_ID}
 ./bin/agentboard task done {PROJECT_ID} {TASK_ID}
 ./bin/agentboard task block {PROJECT_ID} {TASK_ID}
+
+# Heartbeat (liveness only)
+./bin/agentboard heartbeat "alive"
 \`\`\`
 
-Report at the start of work, on milestones, and when completing tasks.
+Task + plan status are the source of truth for work progress.
+By default, each CLI API call emits a \`command/status/description\` activity event.
 `,
   },
 
@@ -71,10 +76,11 @@ EOF
 At the start of every session, register yourself (idempotent):
 ./bin/agentboard register ${agentName} "Cursor AI agent"
 
-Send heartbeats to report what you are doing:
-./bin/agentboard heartbeat "description of current work"
+Create plans for larger work:
+./bin/agentboard plan create {PROJECT_ID} "Plan title"
+./bin/agentboard step create {PROJECT_ID} {PLAN_ID} "Step title" 1
 
-Create tasks when starting new work:
+Create tasks when starting execution:
 ./bin/agentboard task create {PROJECT_ID} "task title" medium
 
 Update task status as you work (statuses: todo, in_progress, done, blocked):
@@ -82,7 +88,11 @@ Update task status as you work (statuses: todo, in_progress, done, blocked):
 ./bin/agentboard task done {PROJECT_ID} {TASK_ID}
 ./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 
-Report at the start of work, on milestones, when completing tasks, and if blocked.
+Heartbeat is liveness only:
+./bin/agentboard heartbeat "alive"
+
+Task + plan status are the source of truth for work progress.
+CLI calls emit \`command/status/description\` activity events by default.
 `,
   },
 
@@ -108,9 +118,10 @@ EOF
 ./bin/agentboard register ${agentName} "OpenAI Codex agent"
 \`\`\`
 
-### Heartbeat (frequently)
+### Plan work
 \`\`\`bash
-./bin/agentboard heartbeat "what you are doing"
+./bin/agentboard plan create {PROJECT_ID} "Plan title"
+./bin/agentboard step create {PROJECT_ID} {PLAN_ID} "Step title" 1
 \`\`\`
 
 ### Create task
@@ -125,7 +136,13 @@ EOF
 ./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 \`\`\`
 
-Report at start of work, on milestones, when done, and if blocked.
+### Heartbeat (liveness only)
+\`\`\`bash
+./bin/agentboard heartbeat "alive"
+\`\`\`
+
+Task + plan status are the source of truth for work progress.
+CLI calls emit \`command/status/description\` activity events by default.
 `,
   },
 
@@ -149,8 +166,9 @@ AGENTBOARD_AGENT=${agentName}
 EOF
 ./bin/agentboard register ${agentName} "AI agent"
 
-## Heartbeat (frequently)
-./bin/agentboard heartbeat "what you are doing"
+## Plan work
+./bin/agentboard plan create {PROJECT_ID} "Plan title"
+./bin/agentboard step create {PROJECT_ID} {PLAN_ID} "Step title" 1
 
 ## Create task
 ./bin/agentboard task create {PROJECT_ID} "..." medium
@@ -160,7 +178,11 @@ EOF
 ./bin/agentboard task done {PROJECT_ID} {TASK_ID}
 ./bin/agentboard task block {PROJECT_ID} {TASK_ID}
 
-Report at start of work, on milestones, when done, and if blocked.
+## Heartbeat (liveness only)
+./bin/agentboard heartbeat "alive"
+
+Task + plan status are the source of truth for work progress.
+CLI calls emit \`command/status/description\` activity events by default.
 `,
   },
 };

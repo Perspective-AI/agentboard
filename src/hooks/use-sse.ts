@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import type { SSEEvent } from "@/lib/types";
 
 export function useSSE(
@@ -8,7 +8,10 @@ export function useSSE(
   onEvent: (event: SSEEvent) => void
 ) {
   const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   useEffect(() => {
     if (!boardId) return;

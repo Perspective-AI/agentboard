@@ -36,6 +36,7 @@ yarn-error.log*
 # agentboard data & config
 /data
 .agentboard
+.agentboard-session-key
 
 # claude code user settings
 .claude/settings.local.json

@@ -43,7 +43,7 @@ export function GettingStarted({ boardId }: GettingStartedProps) {
             <pre className="bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-xs">
 {`curl -X POST ${baseUrl}/api/boards/${boardId}/agents \\
   -H "Content-Type: application/json" \\
-  -d '{"name": "my-agent", "metadata": {"model": "claude-opus-4-6"}}'`}
+  -d '{"name":"my-agent","description":"AI coding agent","metadata":{"intro":{"sessionKey":"random-session-key"}}}'`}
             </pre>
           </div>
 
@@ -70,16 +70,16 @@ export function GettingStarted({ boardId }: GettingStartedProps) {
             <pre className="bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-xs">
 {`curl -X PATCH ${baseUrl}/api/boards/${boardId}/initiatives/backend-api-thread/tasks/review-auth-middleware \\
   -H "Content-Type: application/json" \\
-  -d '{"status":"in_progress"}'`}
+  -d '{"status":"in_progress","actorAgentId":"my-agent"}'`}
             </pre>
           </div>
 
           <div>
-            <p className="font-medium text-foreground mb-1">5. Send heartbeats</p>
+            <p className="font-medium text-foreground mb-1">5. Send liveness heartbeat</p>
             <pre className="bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-xs">
 {`curl -X POST ${baseUrl}/api/boards/${boardId}/agents/my-agent/heartbeat \\
   -H "Content-Type: application/json" \\
-  -d '{"message":"Working on auth review"}'`}
+  -d '{"message":"alive"}'`}
             </pre>
           </div>
 

@@ -17,6 +17,106 @@ import type {
 import type { Storage } from "./index";
 import { getDataDir, slugify, timestamp } from "@/lib/utils";
 
+type AgentIntro = {
+  runtime: string;
+  sessionKey: string;
+  model: string;
+  thread: {
+    id: string;
+    name: string;
+    source?: string;
+  };
+  workingDirectory: string;
+  host?: {
+    hostname: string;
+    localIp: string;
+  };
+};
+
+export class AgentRegistrationError extends Error {
+  code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "AgentRegistrationError";
+    this.code = code;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeAgentName(name: string): string {
+  return name.trim();
+}
+
+function canonicalAgentName(name: string): string {
+  return normalizeAgentName(name).toLowerCase();
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function inferModelFromRuntime(runtime: string): string {
+  const key = runtime.toLowerCase();
+  if (key.includes("codex") || key.includes("openai")) return "codex";
+  if (key.includes("claude") || key.includes("anthropic")) return "claude";
+  if (key.includes("cursor")) return "cursor";
+  return "unknown-model";
+}
+
+function extractThreadContext(intro: Record<string, unknown>): AgentIntro["thread"] | null {
+  const threadRaw = intro.thread;
+
+  if (typeof threadRaw === "string") {
+    const id = normalizeText(threadRaw);
+    const name = normalizeText(intro.threadName) || id;
+    if (!id) return null;
+    return { id, name };
+  }
+
+  if (!isRecord(threadRaw)) return null;
+
+  const id = normalizeText(threadRaw.id) || normalizeText(intro.threadId);
+  const name = normalizeText(threadRaw.name) || normalizeText(intro.threadName) || id;
+  const source = normalizeText(threadRaw.source);
+  if (!id) return null;
+  return source ? { id, name, source } : { id, name };
+}
+
+function extractAgentIntro(metadata: unknown): AgentIntro | null {
+  if (!isRecord(metadata)) return null;
+  const intro = metadata.intro;
+  if (!isRecord(intro)) return null;
+
+  const runtime = normalizeText(intro.runtime) || "unknown-runtime";
+  const sessionKey = normalizeText(intro.sessionKey) || normalizeText(intro.instanceKey);
+  const model = normalizeText(intro.model) || inferModelFromRuntime(runtime);
+  const thread =
+    extractThreadContext(intro) ||
+    (() => {
+      const fallbackId = normalizeText(intro.threadId) || "unknown-thread";
+      const fallbackName = normalizeText(intro.threadName) || fallbackId;
+      return { id: fallbackId, name: fallbackName, source: runtime };
+    })();
+  const workingDirectory = normalizeText(intro.workingDirectory) || "unknown-working-directory";
+  const hostRaw = isRecord(intro.host) ? intro.host : {};
+  const hostHostname = normalizeText(hostRaw.hostname);
+  const hostLocalIp = normalizeText(hostRaw.localIp);
+  const host =
+    hostHostname || hostLocalIp
+      ? {
+          hostname: hostHostname || "unknown-host",
+          localIp: hostLocalIp || "unknown-local-ip",
+        }
+      : undefined;
+
+  if (!sessionKey) return null;
+  return { runtime, sessionKey, model, thread, workingDirectory, host };
+}
+
 async function readJson<T>(filePath: string): Promise<T | null> {
   try {
     const content = await readFile(filePath, "utf-8");
@@ -396,20 +496,54 @@ export class FsStorage implements Storage {
   async createAgent(boardId: string, data: Pick<Agent, "name" | "description" | "metadata">): Promise<Agent> {
     await this.ensureBoardStructure(boardId);
 
-    const baseId = slugify(data.name);
-    const id = await resolveUniqueId((candidate) => path.join(agentsDir(boardId), `${candidate}.json`), baseId);
+    const name = normalizeAgentName(data.name || "");
+    if (!name) {
+      throw new AgentRegistrationError("MISSING_NAME", "Agent name is required");
+    }
+
+    const id = slugify(name);
+    if (!id) {
+      throw new AgentRegistrationError("INVALID_NAME", "Agent name must contain at least one letter or number");
+    }
+
+    const metadata = isRecord(data.metadata) ? data.metadata : {};
+    const intro = extractAgentIntro(metadata);
+    if (!intro) {
+      throw new AgentRegistrationError(
+        "INVALID_AGENT_INTRO",
+        "Agent intro metadata requires sessionKey (runtime/model/thread/workingDirectory are auto-detected or defaulted)",
+      );
+    }
+
+    const existingById = await this.getAgent(boardId, id);
+    if (existingById) {
+      throw new AgentRegistrationError("AGENT_ID_CONFLICT", `Agent id already exists: ${id}`);
+    }
+
+    const existingAgents = await this.listAgents(boardId);
+    const desiredName = canonicalAgentName(name);
+    for (const existing of existingAgents) {
+      if (canonicalAgentName(existing.name) === desiredName) {
+        throw new AgentRegistrationError("AGENT_NAME_CONFLICT", `Agent name already exists: ${name}`);
+      }
+      const existingIntro = extractAgentIntro(existing.metadata);
+      if (existingIntro?.sessionKey === intro.sessionKey) {
+        throw new AgentRegistrationError("AGENT_KEY_CONFLICT", `Agent key already exists: ${intro.sessionKey}`);
+      }
+    }
+
     const now = timestamp();
 
     const agent: Agent = {
       id,
       boardId,
-      name: data.name,
+      name,
       description: data.description || "",
       status: "idle",
       statusMessage: "",
       currentTaskId: null,
       currentInitiativeId: null,
-      metadata: data.metadata || {},
+      metadata,
       registeredAt: now,
       lastHeartbeat: now,
     };

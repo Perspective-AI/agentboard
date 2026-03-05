@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project, Task, Agent } from "@/lib/types";
+import type { Project, Task, Agent, TaskStatus } from "@/lib/types";
 import { EmptyState } from "@/components/common/empty-state";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Card } from "@/components/ui/card";
@@ -14,30 +14,28 @@ interface ProjectBoardProps {
   onTaskClick: (task: Task) => void;
 }
 
-type LaneId = "backlog" | "planned" | "in_progress" | "done";
-
 const laneMeta: Array<{
-  id: LaneId;
+  id: TaskStatus;
   label: string;
   subtitle: string;
   cardInClass: string;
 }> = [
   {
-    id: "backlog",
-    label: "Backlog",
-    subtitle: "Unplanned",
+    id: "todo",
+    label: "To Do",
+    subtitle: "Ready to pick up",
     cardInClass: "slide-in-from-left-2",
-  },
-  {
-    id: "planned",
-    label: "Planned",
-    subtitle: "Ready to start",
-    cardInClass: "slide-in-from-left-4",
   },
   {
     id: "in_progress",
     label: "In Progress",
     subtitle: "Active work",
+    cardInClass: "slide-in-from-left-4",
+  },
+  {
+    id: "blocked",
+    label: "Blocked",
+    subtitle: "Needs unblock",
     cardInClass: "slide-in-from-left-6",
   },
   {
@@ -47,13 +45,6 @@ const laneMeta: Array<{
     cardInClass: "slide-in-from-left-8",
   },
 ];
-
-function laneForTask(task: Task): LaneId {
-  if (task.status === "done") return "done";
-  if (task.status === "in_progress" || task.status === "blocked") return "in_progress";
-  if (task.status === "todo" && task.planId) return "planned";
-  return "backlog";
-}
 
 export function ProjectBoard({ projects, tasks, agents, onTaskClick }: ProjectBoardProps) {
   if (projects.length === 0) {
@@ -67,12 +58,12 @@ export function ProjectBoard({ projects, tasks, agents, onTaskClick }: ProjectBo
 
   const initiativeNames = new Map<string, string>(projects.map((project) => [project.id, project.name]));
   const agentsById = new Map<string, Agent>(agents.map((agent) => [agent.id, agent]));
-  const tasksByLane = new Map<LaneId, Task[]>(
+  const tasksByLane = new Map<TaskStatus, Task[]>(
     laneMeta.map((lane) => [lane.id, [] as Task[]]),
   );
 
   for (const task of tasks) {
-    tasksByLane.get(laneForTask(task))?.push(task);
+    tasksByLane.get(task.status)?.push(task);
   }
   for (const lane of laneMeta) {
     tasksByLane

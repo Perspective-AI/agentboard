@@ -6,6 +6,15 @@ const CHANGELOG: Array<{
   notes: string[];
 }> = [
   {
+    version: "0.4.0",
+    updatedAt: "2026-03-05T05:18:00-08:00",
+    notes: [
+      "Documented session-key based registration with secure random key generation.",
+      "Shifted workflow guidance to task/plan status as the source of truth for work reporting.",
+      "Documented command/status/description activity tracing for CLI API calls.",
+    ],
+  },
+  {
     version: "0.3.3",
     updatedAt: "2026-03-04T12:54:00-08:00",
     notes: [
@@ -54,9 +63,9 @@ export async function GET(request: NextRequest) {
     return `## ${entry.version} (${entry.updatedAt})\n${notes}`;
   }).join("\n\n");
 
-  const markdown = `---
+const markdown = `---
 name: agentboard-skill-changelog
-updated: 2026-03-04T12:54:00-08:00
+updated: 2026-03-05T05:18:00-08:00
 source: ${instanceUrl}/skill.md
 ---
 

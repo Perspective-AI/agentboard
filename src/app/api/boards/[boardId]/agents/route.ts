@@ -302,7 +302,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         { status },
       );
     }
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("POST /agents:", err);
+    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } }, { status: 500 });
   }
 }
 
@@ -313,6 +314,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     const agents = await storage.listAgents(boardId);
     return NextResponse.json({ ok: true, data: agents });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("GET /agents:", err);
+    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } }, { status: 500 });
   }
 }

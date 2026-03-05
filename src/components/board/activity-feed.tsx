@@ -38,7 +38,7 @@ export function ActivityFeed({ activity }: ActivityFeedProps) {
               className="relative pl-4 py-1.5 border-b border-border/50 last:border-b-0"
               title={event.message}
             >
-              <span className="absolute left-0 top-[13px] h-1.5 w-1.5 rounded-full bg-foreground/50" />
+              <span className="absolute left-0 top-[13px] h-1.5 w-1.5 rounded-full bg-foreground/50" aria-hidden="true" />
               <p className="text-[11px] text-muted-foreground leading-4">
                 <span className="font-mono text-foreground/80">{getReporter(event)}</span>
                 <span className="mx-1.5">•</span>

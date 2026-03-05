@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStorage } from "@/lib/storage/fs-storage";
 import { sseHub } from "@/lib/sse/hub";
+import { parseJsonBody, internalError } from "@/lib/api-utils";
 import type { Task } from "@/lib/types";
 
 type Params = { params: Promise<{ boardId: string; projectId: string; taskId: string }> };
@@ -15,14 +16,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
     }
     return NextResponse.json({ ok: true, data: task });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("GET /projects/[projectId]/tasks/[taskId]:", err);
+    return internalError();
   }
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const { boardId, projectId, taskId } = await params;
-    const body = await request.json();
+    const parsed = await parseJsonBody(request);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data as Record<string, unknown>;
     const actorAgentId = typeof body.actorAgentId === "string" ? body.actorAgentId.trim() : "";
     if (!actorAgentId) {
       return NextResponse.json(
@@ -45,16 +49,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         "title" | "description" | "status" | "planId" | "planStepId" | "assigneeAgentId" | "assigneeAgentIds" | "deliverables" | "priority" | "tags"
       >
     > = {};
-    if ("title" in body) updates.title = body.title;
-    if ("description" in body) updates.description = body.description;
-    if ("status" in body) updates.status = body.status;
-    if ("planId" in body) updates.planId = body.planId;
-    if ("planStepId" in body) updates.planStepId = body.planStepId;
-    if ("assigneeAgentId" in body) updates.assigneeAgentId = body.assigneeAgentId;
-    if ("assigneeAgentIds" in body) updates.assigneeAgentIds = body.assigneeAgentIds;
-    if ("deliverables" in body) updates.deliverables = body.deliverables;
-    if ("priority" in body) updates.priority = body.priority;
-    if ("tags" in body) updates.tags = body.tags;
+    if ("title" in body) updates.title = body.title as string;
+    if ("description" in body) updates.description = body.description as string;
+    if ("status" in body) updates.status = body.status as Task["status"];
+    if ("planId" in body) updates.planId = body.planId as string;
+    if ("planStepId" in body) updates.planStepId = body.planStepId as string;
+    if ("assigneeAgentId" in body) updates.assigneeAgentId = body.assigneeAgentId as string;
+    if ("assigneeAgentIds" in body) updates.assigneeAgentIds = body.assigneeAgentIds as string[];
+    if ("deliverables" in body) updates.deliverables = body.deliverables as string[];
+    if ("priority" in body) updates.priority = body.priority as Task["priority"];
+    if ("tags" in body) updates.tags = body.tags as string[];
 
     const task = await storage.updateTask(boardId, projectId, taskId, updates, actor.id);
     if (!task) {
@@ -63,7 +67,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     sseHub.broadcast(boardId, "task:updated", task);
     return NextResponse.json({ ok: true, data: task });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("PATCH /projects/[projectId]/tasks/[taskId]:", err);
+    return internalError();
   }
 }
 
@@ -94,9 +99,12 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     if (!deleted) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Task not found" } }, { status: 404 });
     }
-    sseHub.broadcast(boardId, "task:removed", task);
+    if (task) {
+      sseHub.broadcast(boardId, "task:removed", task);
+    }
     return NextResponse.json({ ok: true, data: { deleted: true } });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("DELETE /projects/[projectId]/tasks/[taskId]:", err);
+    return internalError();
   }
 }

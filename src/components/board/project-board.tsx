@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import type { Project, Task, Agent, TaskStatus } from "@/lib/types";
 import { EmptyState } from "@/components/common/empty-state";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
@@ -47,6 +48,29 @@ const laneMeta: Array<{
 ];
 
 export function ProjectBoard({ projects, tasks, agents, onTaskClick }: ProjectBoardProps) {
+  const initiativeNames = useMemo(
+    () => new Map<string, string>(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  const agentsById = useMemo(
+    () => new Map<string, Agent>(agents.map((agent) => [agent.id, agent])),
+    [agents],
+  );
+  const tasksByLane = useMemo(() => {
+    const lanes = new Map<TaskStatus, Task[]>(
+      laneMeta.map((lane) => [lane.id, [] as Task[]]),
+    );
+    for (const task of tasks) {
+      lanes.get(task.status)?.push(task);
+    }
+    for (const lane of laneMeta) {
+      lanes
+        .get(lane.id)
+        ?.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }
+    return lanes;
+  }, [tasks]);
+
   if (projects.length === 0) {
     return (
       <EmptyState
@@ -54,21 +78,6 @@ export function ProjectBoard({ projects, tasks, agents, onTaskClick }: ProjectBo
         description="Create your first initiative via the API to see tasks in a kanban view."
       />
     );
-  }
-
-  const initiativeNames = new Map<string, string>(projects.map((project) => [project.id, project.name]));
-  const agentsById = new Map<string, Agent>(agents.map((agent) => [agent.id, agent]));
-  const tasksByLane = new Map<TaskStatus, Task[]>(
-    laneMeta.map((lane) => [lane.id, [] as Task[]]),
-  );
-
-  for (const task of tasks) {
-    tasksByLane.get(task.status)?.push(task);
-  }
-  for (const lane of laneMeta) {
-    tasksByLane
-      .get(lane.id)
-      ?.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   return (
@@ -109,8 +118,11 @@ export function ProjectBoard({ projects, tasks, agents, onTaskClick }: ProjectBo
                   return (
                     <Card
                       key={task.id}
+                      tabIndex={0}
+                      role="button"
                       className={`cursor-pointer border-border p-3 gap-0 animate-in fade-in-0 ${lane.cardInClass} duration-300`}
                       onClick={() => onTaskClick(task)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTaskClick(task); } }}
                     >
                       <div className="mb-1.5 flex items-start justify-between gap-2">
                         <h4 className="line-clamp-2 text-sm font-medium leading-snug text-foreground">

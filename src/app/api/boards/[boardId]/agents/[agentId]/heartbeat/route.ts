@@ -26,6 +26,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
     return NextResponse.json({ ok: true, data: agent });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    console.error("POST /heartbeat:", err);
+    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } }, { status: 500 });
   }
 }

@@ -33,16 +33,6 @@ export function useBoardData(boardId: string): BoardData {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchActivity = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/boards/${boardId}/activity?limit=200`);
-      const data = await res.json();
-      if (data.ok) setActivity(data.data);
-    } catch {
-      // Activity feed is best-effort.
-    }
-  }, [boardId]);
-
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -71,8 +61,8 @@ export function useBoardData(boardId: string): BoardData {
       if (initiativesData.ok) setInitiatives(initiativesData.data);
       if (tasksData.ok) setTasks(tasksData.data);
       if (activityData.ok) setActivity(activityData.data);
-    } catch (err) {
-      setError(String(err));
+    } catch {
+      setError("Failed to load board data");
     } finally {
       setLoading(false);
     }
@@ -88,42 +78,30 @@ export function useBoardData(boardId: string): BoardData {
 
       switch (type) {
         case "agent:registered":
-          setAgents((prev) => [...prev.filter((a) => a.id !== (data as Agent).id), data as Agent]);
-          setBoard((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  agentCount: prev.agentCount + 1,
-                }
-              : prev,
-          );
+          setAgents((prev) => {
+            const next = [...prev.filter((a) => a.id !== (data as Agent).id), data as Agent];
+            setBoard((b) => b ? { ...b, agentCount: next.length } : b);
+            return next;
+          });
           break;
         case "agent:updated":
           setAgents((prev) => prev.map((a) => (a.id === (data as Agent).id ? (data as Agent) : a)));
           break;
         case "agent:removed":
-          setAgents((prev) => prev.filter((a) => a.id !== (data as Agent).id));
-          setBoard((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  agentCount: Math.max(0, prev.agentCount - 1),
-                }
-              : prev,
-          );
+          setAgents((prev) => {
+            const next = prev.filter((a) => a.id !== (data as Agent).id);
+            setBoard((b) => b ? { ...b, agentCount: next.length } : b);
+            return next;
+          });
           break;
         case "initiative:created":
         case "project:created":
-          setInitiatives((prev) => [...prev.filter((i) => i.id !== (data as Initiative).id), data as Initiative]);
-          setBoard((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  initiativeCount: prev.initiativeCount + 1,
-                  projectCount: prev.projectCount + 1,
-                }
-              : prev,
-          );
+          setInitiatives((prev) => {
+            if (prev.some((i) => i.id === (data as Initiative).id)) return prev;
+            const next = [...prev, data as Initiative];
+            setBoard((b) => b ? { ...b, initiativeCount: next.length, projectCount: next.length } : b);
+            return next;
+          });
           break;
         case "initiative:updated":
         case "project:updated":
@@ -131,54 +109,49 @@ export function useBoardData(boardId: string): BoardData {
           break;
         case "initiative:removed":
         case "project:removed":
-          setInitiatives((prev) => prev.filter((i) => i.id !== (data as Initiative).id));
-          setBoard((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  initiativeCount: Math.max(0, prev.initiativeCount - 1),
-                  projectCount: Math.max(0, prev.projectCount - 1),
-                }
-              : prev,
-          );
+          setInitiatives((prev) => {
+            if (!prev.some((i) => i.id === (data as Initiative).id)) return prev;
+            const next = prev.filter((i) => i.id !== (data as Initiative).id);
+            setBoard((b) => b ? { ...b, initiativeCount: next.length, projectCount: next.length } : b);
+            return next;
+          });
           break;
         case "task:created":
-          setTasks((prev) => [...prev, data as Task]);
-          setBoard((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  taskCount: prev.taskCount + 1,
-                }
-              : prev,
-          );
+          setTasks((prev) => {
+            if (prev.some((t) => t.id === (data as Task).id)) return prev;
+            const next = [...prev, data as Task];
+            setBoard((b) => b ? { ...b, taskCount: next.length } : b);
+            return next;
+          });
           break;
         case "task:updated":
           setTasks((prev) => prev.map((t) => (t.id === (data as Task).id ? (data as Task) : t)));
           break;
         case "task:removed":
-          setTasks((prev) => prev.filter((t) => t.id !== (data as Task).id));
-          setBoard((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  taskCount: Math.max(0, prev.taskCount - 1),
-                }
-              : prev,
-          );
+          setTasks((prev) => {
+            if (!prev.some((t) => t.id === (data as Task).id)) return prev;
+            const next = prev.filter((t) => t.id !== (data as Task).id);
+            setBoard((b) => b ? { ...b, taskCount: next.length } : b);
+            return next;
+          });
           break;
         case "activity:logged":
           setActivity((prev) => [data as ActivityEvent, ...prev].slice(0, 200));
+          break;
+        case "plan:created":
+        case "plan:updated":
+        case "plan:removed":
+        case "plan_step:created":
+        case "plan_step:updated":
+        case "plan_step:removed":
+          // Plans aren't in top-level state — no-op for now
           break;
         case "board:updated":
           fetchData();
           return;
       }
-
-      // Keep behavior trace fresh after any state mutation.
-      fetchActivity();
     },
-    [fetchActivity, fetchData],
+    [fetchData],
   );
 
   useSSE(boardId, handleSSE);

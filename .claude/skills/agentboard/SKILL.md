@@ -1,76 +1,56 @@
 ---
 name: agentboard
-description: Report agent status, create/update tasks, and send heartbeats to the Agentboard API. Use this to track your own progress on a board.
+description: >
+  Report your progress to the Agentboard instance using the ./bin/agentboard CLI.
+  Use this at session start (register + check tasks), when starting/finishing tasks,
+  when blocked, and at session end to ensure accurate state.
 argument-hint: <action> [args...]
 disable-model-invocation: false
 ---
 
 # Agentboard Agent Skill
 
-You are an AI agent reporting your progress to an Agentboard instance. Use the Agentboard REST API to register yourself, manage tasks, and send heartbeats.
+You are an AI agent reporting your progress to an Agentboard instance.
+
+**Use the `./bin/agentboard` CLI for all operations.** Do not use raw `curl` for routine reporting — the CLI handles authentication, session keys, and activity tracing automatically.
+
+**Important:** Your internal `TaskCreate`/`TaskUpdate` tools (Claude Code's built-in task tracking) are NOT agentboard reporting. You must use the `./bin/agentboard` CLI to report to the board.
 
 ## Configuration
 
-- **Agentboard URL**: Use `AGENTBOARD_URL` env var if set, otherwise default to `http://localhost:4040`
-- **Agent name**: Use `AGENTBOARD_AGENT` env var if set, otherwise default to `claude-code`
-- **Board ID**: Use `AGENTBOARD_BOARD` env var if set, otherwise infer from context or ask the user
+Set these environment variables (or write them to `.agentboard` in the project root):
 
-Store the resolved values for the session so you don't re-resolve on every call.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENTBOARD_URL` | `http://localhost:4040` | Server URL |
+| `AGENTBOARD_BOARD` | `agentboard` | Board ID |
+| `AGENTBOARD_AGENT` | *(required)* | Your unique agent name |
 
-## Actions
+## Quick reference
 
-Based on the arguments (`$ARGUMENTS`), perform the appropriate action:
-
-### `register <board-id>` — Register yourself to a board
 ```bash
-curl -s -X POST ${AGENTBOARD_URL}/api/boards/${BOARD}/agents \
-  -H "Content-Type: application/json" \
-  -d '{"name": "${AGENT}", "description": "AI coding agent", "metadata": {"model": "claude-opus-4-6"}}'
+# Register (once per session)
+./bin/agentboard register "your-agent-name" "Brief role description"
+
+# Check what's assigned to you
+./bin/agentboard status
+
+# Task lifecycle
+./bin/agentboard task create <project-id> "Task title" <priority>
+./bin/agentboard task start <project-id> <task-id>
+./bin/agentboard task done <project-id> <task-id>
+./bin/agentboard task block <project-id> <task-id>
+
+# Heartbeat (liveness only — not for progress)
+./bin/agentboard heartbeat "alive"
 ```
 
-### `heartbeat <message>` — Send a heartbeat with status message
-```bash
-curl -s -X POST ${AGENTBOARD_URL}/api/boards/${BOARD}/agents/${AGENT}/heartbeat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "<message>"}'
+## Full documentation
+
+For the complete workflow guide, plan/step management, project list, and API reference, fetch the latest skill doc from the server:
+
+```
+curl -s ${AGENTBOARD_URL:-http://localhost:4040}/skill.md
 ```
 
-### `task create <project-id> <title> [priority]` — Create a new task
-```bash
-curl -s -X POST ${AGENTBOARD_URL}/api/boards/${BOARD}/projects/${PROJECT}/tasks \
-  -H "Content-Type: application/json" \
-  -d '{"title": "<title>", "assigneeAgentId": "${AGENT}", "priority": "<priority|medium>"}'
-```
-
-### `task start <project-id> <task-id>` — Mark a task as in_progress
-```bash
-curl -s -X PATCH ${AGENTBOARD_URL}/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK} \
-  -H "Content-Type: application/json" -d '{"status": "in_progress"}'
-```
-Also send a heartbeat saying you started working on this task.
-
-### `task done <project-id> <task-id>` — Mark a task as done
-```bash
-curl -s -X PATCH ${AGENTBOARD_URL}/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK} \
-  -H "Content-Type: application/json" -d '{"status": "done"}'
-```
-Also send a heartbeat confirming completion.
-
-### `task block <project-id> <task-id>` — Mark a task as blocked
-```bash
-curl -s -X PATCH ${AGENTBOARD_URL}/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK} \
-  -H "Content-Type: application/json" -d '{"status": "blocked"}'
-```
-
-### `status` — Show current board status
-Fetch and display the board summary, your agent info, and active tasks.
-
-### No arguments / help
-Show a brief usage summary of available actions.
-
-## Behavior
-
-- Always use `curl -s` for clean output
-- Parse JSON responses and report success/failure clearly to the user
-- If a request fails with 404, suggest the entity might not exist yet
-- Keep messages concise — this is a status tool, not a conversation
+The served `skill.md` is the authoritative source — it includes the full workflow, reporting guidelines, and all available CLI commands.

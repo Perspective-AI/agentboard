@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readdir, readFile, rm, writeFile } from "fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -15,7 +15,8 @@ import type {
   TaskStatus,
 } from "@/lib/types";
 import type { Storage } from "./index";
-import { getDataDir, slugify, timestamp } from "@/lib/utils";
+import { slugify, timestamp } from "@/lib/utils";
+import { getDataDir } from "@/lib/server-utils";
 
 type AgentIntro = {
   runtime: string;
@@ -121,14 +122,23 @@ async function readJson<T>(filePath: string): Promise<T | null> {
   try {
     const content = await readFile(filePath, "utf-8");
     return JSON.parse(content) as T;
-  } catch {
-    return null;
+  } catch (err: unknown) {
+    if (err instanceof SyntaxError) {
+      console.error(`Corrupted JSON in ${filePath}:`, err.message);
+      return null;
+    }
+    if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "ENOENT") {
+      return null;
+    }
+    throw err;
   }
 }
 
 async function writeJson(filePath: string, data: unknown): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
+  const tmpPath = filePath + ".tmp";
+  await writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  await rename(tmpPath, filePath);
 }
 
 async function listDir(dirPath: string): Promise<string[]> {
@@ -194,11 +204,22 @@ function migrationMarkerFile(boardId: string): string {
 async function resolveUniqueId(filePathForId: (id: string) => string, desiredId: string): Promise<string> {
   let candidate = desiredId;
   let counter = 2;
-  while (existsSync(filePathForId(candidate))) {
-    candidate = `${desiredId}-${counter}`;
-    counter += 1;
+  for (;;) {
+    const filePath = filePathForId(candidate);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    try {
+      // O_CREAT|O_EXCL: fail if file already exists — eliminates TOCTOU race
+      await writeFile(filePath, "{}", { flag: "wx" });
+      return candidate;
+    } catch (err: unknown) {
+      if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "EEXIST") {
+        candidate = `${desiredId}-${counter}`;
+        counter += 1;
+        continue;
+      }
+      throw err;
+    }
   }
-  return candidate;
 }
 
 function normalizeAssignees(task: Partial<Task>): string[] {
@@ -440,25 +461,33 @@ export class FsStorage implements Storage {
     const board = await this.getBoard(boardId);
     if (!board) return null;
 
-    const agents = await this.listAgents(boardId);
-    const initiatives = await this.listInitiatives(boardId);
-    const tasks = await this.listAllBoardTasks(boardId);
-    let planCount = 0;
-    let planStepCount = 0;
-    for (const initiative of initiatives) {
-      const plans = await this.listPlans(boardId, initiative.id);
-      planCount += plans.length;
-      for (const plan of plans) {
-        const steps = await this.listPlanSteps(boardId, initiative.id, plan.id);
-        planStepCount += steps.length;
-      }
-    }
+    const [agents, initiatives, tasks] = await Promise.all([
+      this.listAgents(boardId),
+      this.listInitiatives(boardId),
+      this.listAllBoardTasks(boardId),
+    ]);
+
+    // Parallelize plan reads across initiatives
+    const plansByInitiative = await Promise.all(
+      initiatives.map((initiative) => this.listPlans(boardId, initiative.id)),
+    );
+
+    const allPlans = plansByInitiative.flat();
+
+    // Parallelize step counts across plans
+    const stepsByPlan = await Promise.all(
+      allPlans.map((plan) =>
+        this.listPlanSteps(boardId, plan.initiativeId, plan.id),
+      ),
+    );
+
+    const planStepCount = stepsByPlan.reduce((sum, steps) => sum + steps.length, 0);
 
     return {
       ...board,
       agentCount: agents.length,
       initiativeCount: initiatives.length,
-      planCount,
+      planCount: allPlans.length,
       planStepCount,
       projectCount: initiatives.length,
       taskCount: tasks.length,
@@ -1076,8 +1105,8 @@ export class FsStorage implements Storage {
 
     const filePath = planStepFile(boardId, initiativeId, planId, stepId);
     if (!existsSync(filePath)) return false;
-    await rm(filePath);
 
+    // Detach tasks FIRST, then delete the step file — prevents orphaned task references on crash
     const tasks = await this.listTasks(boardId, initiativeId);
     for (const task of tasks) {
       if (task.planId === planId && task.planStepId === stepId) {
@@ -1085,6 +1114,8 @@ export class FsStorage implements Storage {
         await writeJson(taskFile(boardId, initiativeId, task.id), detached);
       }
     }
+
+    await rm(filePath);
 
     await this.appendActivity(boardId, {
       type: "plan_step.removed",
@@ -1351,9 +1382,14 @@ export class FsStorage implements Storage {
       .filter((name) => name.endsWith(".ndjson"))
       .sort((a, b) => b.localeCompare(a));
 
+    const limit = options?.limit ?? 200;
+    const hasFilters = !!(options?.initiativeId || options?.agentId || options?.taskId);
     const events: ActivityEvent[] = [];
 
     for (const fileName of files) {
+      // Files are sorted descending by date — stop early when no filters are active
+      if (!hasFilters && events.length >= limit) break;
+
       const filePath = path.join(eventsDir(boardId), fileName);
       const content = await readFile(filePath, "utf-8").catch(() => "");
       if (!content) continue;
@@ -1382,17 +1418,16 @@ export class FsStorage implements Storage {
 
     filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-    const limit = options?.limit ?? 200;
     return filtered.slice(0, limit);
   }
 }
 
-// Singleton
-let storageInstance: FsStorage | null = null;
+// Singleton — use globalThis to survive Next.js HMR in development
+const globalForStorage = globalThis as unknown as { _agentboardStorage?: FsStorage };
 
 export function getStorage(): Storage {
-  if (!storageInstance) {
-    storageInstance = new FsStorage();
+  if (!globalForStorage._agentboardStorage) {
+    globalForStorage._agentboardStorage = new FsStorage();
   }
-  return storageInstance;
+  return globalForStorage._agentboardStorage;
 }

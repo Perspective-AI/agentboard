@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import type { Agent, Initiative, Task } from "@/lib/types";
 import { TaskStatusBadge, PriorityBadge } from "@/components/common/status-badge";
 import { TimeAgo } from "@/components/common/time-ago";
@@ -21,20 +21,26 @@ const statusFilter: Array<{ value: string; label: string }> = [
   { value: "blocked", label: "Blocked" },
 ];
 
+const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+const statusOrder: Record<string, number> = { in_progress: 0, todo: 1, blocked: 2, done: 3 };
+
 export function AllTasksTable({ tasks, agents, initiatives, onTaskClick }: AllTasksTableProps) {
   const [filter, setFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"updatedAt" | "priority" | "status">("updatedAt");
 
-  const filtered = filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
+  const agentsById = useMemo(
+    () => new Map(agents.map((a) => [a.id, a])),
+    [agents],
+  );
 
-  const priorityOrder = { high: 0, medium: 1, low: 2 };
-  const statusOrder = { in_progress: 0, todo: 1, blocked: 2, done: 3 };
-
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === "priority") return priorityOrder[a.priority] - priorityOrder[b.priority];
-    if (sortBy === "status") return statusOrder[a.status] - statusOrder[b.status];
-    return b.updatedAt.localeCompare(a.updatedAt);
-  });
+  const sorted = useMemo(() => {
+    const filtered = filter === "all" ? tasks : tasks.filter((t) => t.status === filter);
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "priority") return (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1);
+      if (sortBy === "status") return (statusOrder[a.status] ?? 1) - (statusOrder[b.status] ?? 1);
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+  }, [tasks, filter, sortBy]);
 
   if (tasks.length === 0) {
     return (
@@ -100,12 +106,15 @@ export function AllTasksTable({ tasks, agents, initiatives, onTaskClick }: AllTa
                   ? [task.assigneeAgentId]
                   : [];
               const assignees = assigneeIds
-                .map((id) => agents.find((a) => a.id === id))
+                .map((id) => agentsById.get(id))
                 .filter((agent): agent is Agent => Boolean(agent));
               return (
                 <tr
                   key={task.id}
+                  tabIndex={0}
+                  role="button"
                   onClick={() => onTaskClick(task)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTaskClick(task); } }}
                   className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
                 >
                   <td className="p-3">

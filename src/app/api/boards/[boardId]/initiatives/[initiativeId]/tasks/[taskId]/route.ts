@@ -3,25 +3,33 @@ import { getStorage } from "@/lib/storage/fs-storage";
 import { sseHub } from "@/lib/sse/hub";
 import type { Task } from "@/lib/types";
 
-type Params = { params: Promise<{ boardId: string; projectId: string; taskId: string }> };
+type Params = { params: Promise<{ boardId: string; initiativeId: string; taskId: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
-    const { boardId, projectId, taskId } = await params;
+    const { boardId, initiativeId, taskId } = await params;
     const storage = getStorage();
-    const task = await storage.getTask(boardId, projectId, taskId);
+    const task = await storage.getTask(boardId, initiativeId, taskId);
+
     if (!task) {
-      return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Task not found" } }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: { code: "NOT_FOUND", message: "Task not found" } },
+        { status: 404 },
+      );
     }
+
     return NextResponse.json({ ok: true, data: task });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
+      { status: 500 },
+    );
   }
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
-    const { boardId, projectId, taskId } = await params;
+    const { boardId, initiativeId, taskId } = await params;
     const body = await request.json();
     const actorAgentId = typeof body.actorAgentId === "string" ? body.actorAgentId.trim() : "";
     if (!actorAgentId) {
@@ -56,14 +64,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("priority" in body) updates.priority = body.priority;
     if ("tags" in body) updates.tags = body.tags;
 
-    const task = await storage.updateTask(boardId, projectId, taskId, updates, actor.id);
+    const task = await storage.updateTask(boardId, initiativeId, taskId, updates, actor.id);
+
     if (!task) {
-      return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Task not found" } }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: { code: "NOT_FOUND", message: "Task not found" } },
+        { status: 404 },
+      );
     }
+
     sseHub.broadcast(boardId, "task:updated", task);
     return NextResponse.json({ ok: true, data: task });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
+      { status: 500 },
+    );
   }
 }
 
@@ -80,7 +96,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       );
     }
 
-    const { boardId, projectId, taskId } = await params;
+    const { boardId, initiativeId, taskId } = await params;
     const storage = getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
@@ -89,14 +105,22 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
         { status: 400 },
       );
     }
-    const task = await storage.getTask(boardId, projectId, taskId);
-    const deleted = await storage.deleteTask(boardId, projectId, taskId, actor.id);
+    const task = await storage.getTask(boardId, initiativeId, taskId);
+    const deleted = await storage.deleteTask(boardId, initiativeId, taskId, actor.id);
+
     if (!deleted) {
-      return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Task not found" } }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: { code: "NOT_FOUND", message: "Task not found" } },
+        { status: 404 },
+      );
     }
+
     sseHub.broadcast(boardId, "task:removed", task);
     return NextResponse.json({ ok: true, data: { deleted: true } });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: { code: "INTERNAL_ERROR", message: String(err) } },
+      { status: 500 },
+    );
   }
 }

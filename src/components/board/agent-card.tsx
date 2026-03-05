@@ -18,7 +18,11 @@ interface AgentCardProps {
 
 export function AgentCard({ agent, tasks }: AgentCardProps) {
   const currentTask = agent.currentTaskId
-    ? tasks.find((t) => t.id === agent.currentTaskId)
+    ? tasks.find(
+        (t) =>
+          t.id === agent.currentTaskId &&
+          (!agent.currentInitiativeId || t.initiativeId === agent.currentInitiativeId),
+      )
     : null;
 
   return (
@@ -45,6 +49,7 @@ export function AgentCard({ agent, tasks }: AgentCardProps) {
         <div className="text-xs bg-muted p-2 rounded-md mb-2">
           <span className="text-muted-foreground">Working on: </span>
           <span className="font-medium">{currentTask.title}</span>
+          <span className="text-muted-foreground"> ({currentTask.initiativeId})</span>
         </div>
       )}
 

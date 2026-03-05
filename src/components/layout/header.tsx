@@ -1,38 +1,30 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { BoardSummary } from "@/lib/types";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Plug } from "lucide-react";
 
 interface HeaderProps {
   board?: BoardSummary | null;
+  tabs?: ReactNode;
 }
 
-export function Header({ board }: HeaderProps) {
+export function Header({ board, tabs }: HeaderProps) {
   return (
-    <header className="h-12 border-b border-border bg-background flex items-center justify-between px-4 shrink-0">
-      <div className="flex items-center gap-3">
-        {board ? (
-          <>
-            <h1 className="text-sm font-semibold text-foreground">{board.name}</h1>
-            <Separator orientation="vertical" className="h-4" />
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{board.projectCount} projects</span>
-              <span>{board.agentCount} agents</span>
-              <span>{board.taskCount} tasks</span>
-            </div>
-          </>
-        ) : (
-          <h1 className="text-sm font-semibold text-foreground">Agentboard</h1>
-        )}
+    <header className="h-12 border-b border-border bg-background flex items-center gap-3 px-3 sm:px-4 shrink-0">
+      <div className="min-w-0 shrink-0">
+        <h1 className="text-sm font-semibold text-foreground truncate">
+          {board ? board.name : "Agentboard"}
+        </h1>
       </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+      {tabs ? <div className="min-w-0 flex-1 flex justify-center">{tabs}</div> : <div className="flex-1" />}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Button variant="ghost" size="sm" className="h-8 text-xs px-2" asChild>
           <a href="/skill.md" target="_blank" rel="noopener noreferrer">
             <Plug className="h-4 w-4" />
-            Connect Agent
+            <span className="hidden sm:inline">Connect Agent</span>
           </a>
         </Button>
         <ThemeToggle />

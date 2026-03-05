@@ -1,4 +1,14 @@
-import type { Board, BoardSummary, Agent, Project, Task } from "@/lib/types";
+import type {
+  ActivityEvent,
+  Agent,
+  Board,
+  BoardSummary,
+  Initiative,
+  Plan,
+  PlanStep,
+  Project,
+  Task,
+} from "@/lib/types";
 
 export interface Storage {
   // Boards
@@ -13,7 +23,11 @@ export interface Storage {
   createAgent(boardId: string, data: Pick<Agent, "name" | "description" | "metadata">): Promise<Agent>;
   listAgents(boardId: string): Promise<Agent[]>;
   getAgent(boardId: string, agentId: string): Promise<Agent | null>;
-  updateAgent(boardId: string, agentId: string, data: Partial<Pick<Agent, "name" | "description" | "status" | "statusMessage" | "currentTaskId" | "metadata">>): Promise<Agent | null>;
+  updateAgent(
+    boardId: string,
+    agentId: string,
+    data: Partial<Pick<Agent, "name" | "description" | "status" | "statusMessage" | "currentTaskId" | "currentInitiativeId" | "metadata">>,
+  ): Promise<Agent | null>;
   deleteAgent(boardId: string, agentId: string): Promise<boolean>;
   heartbeatAgent(boardId: string, agentId: string, message?: string): Promise<Agent | null>;
 
@@ -24,11 +38,81 @@ export interface Storage {
   updateProject(boardId: string, projectId: string, data: Partial<Pick<Project, "name" | "description">>): Promise<Project | null>;
   deleteProject(boardId: string, projectId: string): Promise<boolean>;
 
+  // Initiatives
+  createInitiative(
+    boardId: string,
+    data: Pick<Initiative, "name" | "description"> & Partial<Pick<Initiative, "status" | "kind" | "assigneeAgentIds">>,
+  ): Promise<Initiative>;
+  listInitiatives(boardId: string): Promise<Initiative[]>;
+  getInitiative(boardId: string, initiativeId: string): Promise<Initiative | null>;
+  updateInitiative(
+    boardId: string,
+    initiativeId: string,
+    data: Partial<Pick<Initiative, "name" | "description" | "status" | "kind" | "assigneeAgentIds">>,
+  ): Promise<Initiative | null>;
+  deleteInitiative(boardId: string, initiativeId: string): Promise<boolean>;
+
+  // Plans
+  createPlan(
+    boardId: string,
+    initiativeId: string,
+    data: Pick<Plan, "title" | "description"> &
+      Partial<Pick<Plan, "status" | "ownerAgentId" | "tags">>,
+  ): Promise<Plan>;
+  listPlans(boardId: string, initiativeId: string): Promise<Plan[]>;
+  getPlan(boardId: string, initiativeId: string, planId: string): Promise<Plan | null>;
+  updatePlan(
+    boardId: string,
+    initiativeId: string,
+    planId: string,
+    data: Partial<Pick<Plan, "title" | "description" | "status" | "ownerAgentId" | "tags">>,
+  ): Promise<Plan | null>;
+  deletePlan(boardId: string, initiativeId: string, planId: string): Promise<boolean>;
+
+  // Plan steps
+  createPlanStep(
+    boardId: string,
+    initiativeId: string,
+    planId: string,
+    data: Pick<PlanStep, "title" | "description"> &
+      Partial<Pick<PlanStep, "status" | "assigneeAgentId" | "order">>,
+  ): Promise<PlanStep>;
+  listPlanSteps(boardId: string, initiativeId: string, planId: string): Promise<PlanStep[]>;
+  getPlanStep(boardId: string, initiativeId: string, planId: string, stepId: string): Promise<PlanStep | null>;
+  updatePlanStep(
+    boardId: string,
+    initiativeId: string,
+    planId: string,
+    stepId: string,
+    data: Partial<Pick<PlanStep, "title" | "description" | "status" | "assigneeAgentId" | "order">>,
+  ): Promise<PlanStep | null>;
+  deletePlanStep(boardId: string, initiativeId: string, planId: string, stepId: string): Promise<boolean>;
+
   // Tasks
-  createTask(boardId: string, projectId: string, data: Pick<Task, "title" | "description" | "assigneeAgentId" | "priority" | "tags">): Promise<Task>;
-  listTasks(boardId: string, projectId: string, filters?: { status?: string; assignee?: string; tag?: string }): Promise<Task[]>;
+  createTask(
+    boardId: string,
+    initiativeId: string,
+    data: Pick<Task, "title" | "description" | "assigneeAgentId" | "priority" | "tags"> &
+      Partial<Pick<Task, "planId" | "planStepId" | "assigneeAgentIds" | "deliverables">>,
+    actorAgentId: string,
+  ): Promise<Task>;
+  listTasks(boardId: string, initiativeId: string, filters?: { status?: string; assignee?: string; tag?: string }): Promise<Task[]>;
   listAllBoardTasks(boardId: string, filters?: { status?: string; assignee?: string; tag?: string }): Promise<Task[]>;
-  getTask(boardId: string, projectId: string, taskId: string): Promise<Task | null>;
-  updateTask(boardId: string, projectId: string, taskId: string, data: Partial<Pick<Task, "title" | "description" | "status" | "assigneeAgentId" | "priority" | "tags">>): Promise<Task | null>;
-  deleteTask(boardId: string, projectId: string, taskId: string): Promise<boolean>;
+  getTask(boardId: string, initiativeId: string, taskId: string): Promise<Task | null>;
+  updateTask(
+    boardId: string,
+    initiativeId: string,
+    taskId: string,
+    data: Partial<
+      Pick<
+        Task,
+        "title" | "description" | "status" | "planId" | "planStepId" | "assigneeAgentId" | "assigneeAgentIds" | "deliverables" | "priority" | "tags"
+      >
+    >,
+    actorAgentId: string,
+  ): Promise<Task | null>;
+  deleteTask(boardId: string, initiativeId: string, taskId: string, actorAgentId: string): Promise<boolean>;
+
+  // Activity
+  listActivity(boardId: string, options?: { limit?: number; initiativeId?: string; agentId?: string; taskId?: string }): Promise<ActivityEvent[]>;
 }

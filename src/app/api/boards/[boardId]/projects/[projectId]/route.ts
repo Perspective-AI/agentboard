@@ -27,6 +27,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!project) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Project not found" } }, { status: 404 });
     }
+    sseHub.broadcast(boardId, "initiative:updated", project);
     sseHub.broadcast(boardId, "project:updated", project);
     return NextResponse.json({ ok: true, data: project });
   } catch (err) {
@@ -43,6 +44,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     if (!deleted) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Project not found" } }, { status: 404 });
     }
+    sseHub.broadcast(boardId, "initiative:removed", project);
     sseHub.broadcast(boardId, "project:removed", project);
     return NextResponse.json({ ok: true, data: { deleted: true } });
   } catch (err) {

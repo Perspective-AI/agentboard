@@ -6,5 +6,5 @@ export default async function BoardPage({
   params: Promise<{ boardId: string }>;
 }) {
   const { boardId } = await params;
-  redirect(`/boards/${boardId}/projects`);
+  redirect(`/boards/${boardId}/initiatives`);
 }

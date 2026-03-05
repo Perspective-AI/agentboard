@@ -12,9 +12,14 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, agents, onClick }: TaskCardProps) {
-  const assignee = task.assigneeAgentId
-    ? agents.find((a) => a.id === task.assigneeAgentId)
-    : null;
+  const assigneeIds = task.assigneeAgentIds?.length
+    ? task.assigneeAgentIds
+    : task.assigneeAgentId
+      ? [task.assigneeAgentId]
+      : [];
+  const assignees = assigneeIds
+    .map((id) => agents.find((a) => a.id === id))
+    .filter((agent): agent is Agent => Boolean(agent));
 
   return (
     <Card
@@ -47,9 +52,9 @@ export function TaskCard({ task, agents, onClick }: TaskCardProps) {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {assignee && (
+          {assignees.length > 0 && (
             <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-              {assignee.name}
+              {assignees.map((agent) => agent.name).join(", ")}
             </span>
           )}
           <TimeAgo date={task.updatedAt} />

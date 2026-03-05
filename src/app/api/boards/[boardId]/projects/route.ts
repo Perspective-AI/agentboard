@@ -20,6 +20,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       name: body.name,
       description: body.description || "",
     });
+    sseHub.broadcast(boardId, "initiative:created", project);
     sseHub.broadcast(boardId, "project:created", project);
     return NextResponse.json({ ok: true, data: project }, { status: 201 });
   } catch (err) {

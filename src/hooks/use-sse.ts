@@ -27,8 +27,12 @@ export function useSSE(
     // Listen to all event types
     const eventTypes = [
       "agent:registered", "agent:updated", "agent:removed",
+      "initiative:created", "initiative:updated", "initiative:removed",
       "project:created", "project:updated", "project:removed",
+      "plan:created", "plan:updated", "plan:removed",
+      "plan_step:created", "plan_step:updated", "plan_step:removed",
       "task:created", "task:updated", "task:removed",
+      "activity:logged",
       "board:updated",
     ];
 

@@ -20,9 +20,15 @@ interface TaskDetailProps {
 export function TaskDetail({ task, agents, onClose }: TaskDetailProps) {
   if (!task) return null;
 
-  const assignee = task.assigneeAgentId
-    ? agents.find((a) => a.id === task.assigneeAgentId)
-    : null;
+  const assigneeIds = task.assigneeAgentIds?.length
+    ? task.assigneeAgentIds
+    : task.assigneeAgentId
+      ? [task.assigneeAgentId]
+      : [];
+  const assigneeNames = assigneeIds.map((id) => {
+    const found = agents.find((agent) => agent.id === id);
+    return found ? found.name : id;
+  });
 
   return (
     <Sheet open={!!task} onOpenChange={() => onClose()}>
@@ -58,12 +64,12 @@ export function TaskDetail({ task, agents, onClose }: TaskDetailProps) {
 
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Project</span>
-              <p className="font-medium">{task.projectId}</p>
+              <span className="text-muted-foreground">Initiative</span>
+              <p className="font-medium">{task.initiativeId || task.projectId}</p>
             </div>
             <div>
               <span className="text-muted-foreground">Assignee</span>
-              <p className="font-medium">{assignee ? assignee.name : "Unassigned"}</p>
+              <p className="font-medium">{assigneeNames.length > 0 ? assigneeNames.join(", ") : "Unassigned"}</p>
             </div>
             <div>
               <span className="text-muted-foreground">Created</span>
@@ -81,12 +87,25 @@ export function TaskDetail({ task, agents, onClose }: TaskDetailProps) {
             )}
           </div>
 
+          {task.deliverables.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-1">Deliverables</h4>
+              <div className="space-y-1">
+                {task.deliverables.map((item) => (
+                  <p key={item} className="text-sm text-muted-foreground">
+                    {item}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Separator />
 
           <div>
             <h4 className="text-sm font-medium mb-1">API</h4>
             <code className="text-xs block bg-muted p-2 rounded-md overflow-x-auto">
-              PATCH /api/boards/{task.boardId}/projects/{task.projectId}/tasks/{task.id}
+              PATCH /api/boards/{task.boardId}/initiatives/{task.initiativeId || task.projectId}/tasks/{task.id}
             </code>
           </div>
         </div>

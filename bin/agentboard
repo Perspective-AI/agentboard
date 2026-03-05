@@ -4,10 +4,23 @@
 #
 # Usage:
 #   agentboard heartbeat <message>
-#   agentboard task create <project> <title> [priority]
-#   agentboard task start <project> <task-id>
-#   agentboard task done <project> <task-id>
-#   agentboard task block <project> <task-id>
+#   agentboard initiative create <name> [kind]
+#   agentboard initiative list
+#   agentboard plan create <initiative> <title>
+#   agentboard plan list <initiative>
+#   agentboard plan start <initiative> <plan-id>
+#   agentboard plan done <initiative> <plan-id>
+#   agentboard plan block <initiative> <plan-id>
+#   agentboard step create <initiative> <plan-id> <title> [order]
+#   agentboard step list <initiative> <plan-id>
+#   agentboard step start <initiative> <plan-id> <step-id>
+#   agentboard step done <initiative> <plan-id> <step-id>
+#   agentboard step block <initiative> <plan-id> <step-id>
+#   agentboard task create <initiative> <title> [priority]
+#   agentboard task start <initiative> <task-id>
+#   agentboard task done <initiative> <task-id>
+#   agentboard task block <initiative> <task-id>
+#   agentboard activity [limit]
 #   agentboard register [agent-name] [description]
 #   agentboard status
 #
@@ -57,39 +70,149 @@ case "${1:-help}" in
       "{\"message\":\"${MSG}\"}"
     ;;
 
+  initiative)
+    case "${2:-}" in
+      create)
+        NAME="${3:?initiative name required}"
+        KIND="${4:-thread}"
+        api POST "/api/boards/${BOARD}/initiatives" \
+          "{\"name\":\"${NAME}\",\"kind\":\"${KIND}\"}"
+        ;;
+      list)
+        api GET "/api/boards/${BOARD}/initiatives"
+        ;;
+      *)
+        echo "Usage: agentboard initiative {create|list} [args...]" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  plan)
+    if [ -z "$AGENT" ]; then echo "Error: set AGENTBOARD_AGENT" >&2; exit 1; fi
+    case "${2:-}" in
+      create)
+        INITIATIVE="${3:?initiative-id required}"
+        TITLE="${4:?plan title required}"
+        api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans" \
+          "{\"title\":\"${TITLE}\",\"ownerAgentId\":\"${AGENT}\"}"
+        ;;
+      list)
+        INITIATIVE="${3:?initiative-id required}"
+        api GET "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans"
+        ;;
+      start)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}" \
+          '{"status":"in_progress"}'
+        ;;
+      done)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}" \
+          '{"status":"done"}'
+        ;;
+      block)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}" \
+          '{"status":"blocked"}'
+        ;;
+      *)
+        echo "Usage: agentboard plan {create|list|start|done|block} <initiative> <plan> [args...]" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  step)
+    if [ -z "$AGENT" ]; then echo "Error: set AGENTBOARD_AGENT" >&2; exit 1; fi
+    case "${2:-}" in
+      create)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        TITLE="${5:?step title required}"
+        ORDER="${6:-}"
+        if [ -n "$ORDER" ]; then
+          api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps" \
+            "{\"title\":\"${TITLE}\",\"assigneeAgentId\":\"${AGENT}\",\"order\":${ORDER}}"
+        else
+          api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps" \
+            "{\"title\":\"${TITLE}\",\"assigneeAgentId\":\"${AGENT}\"}"
+        fi
+        ;;
+      list)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        api GET "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps"
+        ;;
+      start)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        STEP="${5:?step-id required}"
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps/${STEP}" \
+          '{"status":"in_progress"}'
+        ;;
+      done)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        STEP="${5:?step-id required}"
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps/${STEP}" \
+          '{"status":"done"}'
+        ;;
+      block)
+        INITIATIVE="${3:?initiative-id required}"
+        PLAN="${4:?plan-id required}"
+        STEP="${5:?step-id required}"
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/plans/${PLAN}/steps/${STEP}" \
+          '{"status":"blocked"}'
+        ;;
+      *)
+        echo "Usage: agentboard step {create|list|start|done|block} <initiative> <plan> <step> [args...]" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
   task)
     if [ -z "$AGENT" ]; then echo "Error: set AGENTBOARD_AGENT" >&2; exit 1; fi
     case "${2:-}" in
       create)
-        PROJECT="${3:?project-id required}"
+        INITIATIVE="${3:?initiative-id required}"
         TITLE="${4:?title required}"
         PRIORITY="${5:-medium}"
-        api POST "/api/boards/${BOARD}/projects/${PROJECT}/tasks" \
-          "{\"title\":\"${TITLE}\",\"assigneeAgentId\":\"${AGENT}\",\"priority\":\"${PRIORITY}\"}"
+        api POST "/api/boards/${BOARD}/initiatives/${INITIATIVE}/tasks" \
+          "{\"title\":\"${TITLE}\",\"assigneeAgentId\":\"${AGENT}\",\"actorAgentId\":\"${AGENT}\",\"priority\":\"${PRIORITY}\"}"
         ;;
       start)
-        PROJECT="${3:?project-id required}"
+        INITIATIVE="${3:?initiative-id required}"
         TASK="${4:?task-id required}"
-        api PATCH "/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK}" \
-          '{"status":"in_progress"}'
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/tasks/${TASK}" \
+          "{\"status\":\"in_progress\",\"actorAgentId\":\"${AGENT}\"}"
         ;;
       done)
-        PROJECT="${3:?project-id required}"
+        INITIATIVE="${3:?initiative-id required}"
         TASK="${4:?task-id required}"
-        api PATCH "/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK}" \
-          '{"status":"done"}'
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/tasks/${TASK}" \
+          "{\"status\":\"done\",\"actorAgentId\":\"${AGENT}\"}"
         ;;
       block)
-        PROJECT="${3:?project-id required}"
+        INITIATIVE="${3:?initiative-id required}"
         TASK="${4:?task-id required}"
-        api PATCH "/api/boards/${BOARD}/projects/${PROJECT}/tasks/${TASK}" \
-          '{"status":"blocked"}'
+        api PATCH "/api/boards/${BOARD}/initiatives/${INITIATIVE}/tasks/${TASK}" \
+          "{\"status\":\"blocked\",\"actorAgentId\":\"${AGENT}\"}"
         ;;
       *)
-        echo "Usage: agentboard task {create|start|done|block} <project> <task> [args...]" >&2
+        echo "Usage: agentboard task {create|start|done|block} <initiative> <task> [args...]" >&2
         exit 1
         ;;
     esac
+    ;;
+
+  activity)
+    LIMIT="${2:-25}"
+    api GET "/api/boards/${BOARD}/activity?limit=${LIMIT}"
     ;;
 
   status)
@@ -101,8 +224,14 @@ case "${1:-help}" in
       api GET "/api/boards/${BOARD}/agents/${AGENT}"
       echo ""
     fi
+    echo "=== Initiatives ==="
+    api GET "/api/boards/${BOARD}/initiatives"
+    echo ""
     echo "=== Tasks ==="
     api GET "/api/boards/${BOARD}/tasks"
+    echo ""
+    echo "=== Activity ==="
+    api GET "/api/boards/${BOARD}/activity?limit=10"
     ;;
 
   help|--help|-h)
@@ -111,11 +240,24 @@ case "${1:-help}" in
     echo "Commands:"
     echo "  register [name] [desc]            Register agent to board"
     echo "  heartbeat <message>               Send heartbeat with status"
-    echo "  task create <proj> <title> [pri]   Create and assign task"
-    echo "  task start <proj> <task-id>        Set task in_progress"
-    echo "  task done <proj> <task-id>         Set task done"
-    echo "  task block <proj> <task-id>        Set task blocked"
-    echo "  status                             Show board & agent status"
+    echo "  initiative create <name> [kind]   Create initiative"
+    echo "  initiative list                   List initiatives"
+    echo "  plan create <init> <title>        Create plan"
+    echo "  plan list <init>                  List plans for initiative"
+    echo "  plan start <init> <plan-id>       Set plan in_progress"
+    echo "  plan done <init> <plan-id>        Set plan done"
+    echo "  plan block <init> <plan-id>       Set plan blocked"
+    echo "  step create <init> <plan> <title> Create plan step"
+    echo "  step list <init> <plan>           List plan steps"
+    echo "  step start <init> <plan> <step>   Set step in_progress"
+    echo "  step done <init> <plan> <step>    Set step done"
+    echo "  step block <init> <plan> <step>   Set step blocked"
+    echo "  task create <init> <title> [pri]  Create and assign task"
+    echo "  task start <init> <task-id>       Set task in_progress"
+    echo "  task done <init> <task-id>        Set task done"
+    echo "  task block <init> <task-id>       Set task blocked"
+    echo "  activity [limit]                  Show recent activity events"
+    echo "  status                            Show board, agent, initiatives, tasks, activity"
     echo ""
     echo "Environment: AGENTBOARD_URL, AGENTBOARD_BOARD, AGENTBOARD_AGENT"
     ;;

@@ -81,7 +81,7 @@ export function BoardView({ boardId }: BoardViewProps) {
           <AllTasksTable
             tasks={tasks}
             agents={agents}
-            projects={projects}
+            initiatives={projects}
             onTaskClick={setSelectedTask}
           />
         </TabsContent>

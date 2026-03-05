@@ -13,7 +13,7 @@ function BoardLayoutInner({
   boardId: string;
   children: ReactNode;
 }) {
-  const { board, agents, projects, tasks, loading, error } = useBoardContext();
+  const { board, agents, initiatives, tasks, loading, error } = useBoardContext();
 
   if (loading) {
     return (
@@ -38,19 +38,16 @@ function BoardLayoutInner({
   }
 
   const isEmpty =
-    agents.length === 0 && projects.length === 0 && tasks.length === 0;
+    agents.length === 0 && initiatives.length === 0 && tasks.length === 0;
 
   return (
     <div className="flex flex-col h-full">
-      <Header board={board} />
-      <div className="flex-1 p-6 overflow-y-auto">
+      <Header board={board} tabs={!isEmpty ? <BoardNav boardId={boardId} /> : undefined} />
+      <div className="flex-1 p-4 overflow-y-auto">
         {isEmpty ? (
           <GettingStarted boardId={boardId} />
         ) : (
-          <div className="w-full">
-            <BoardNav boardId={boardId} />
-            <div className="mt-4">{children}</div>
-          </div>
+          <div className="w-full">{children}</div>
         )}
       </div>
     </div>

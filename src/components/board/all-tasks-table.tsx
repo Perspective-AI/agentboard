@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Task, Agent, Project, TaskStatus } from "@/lib/types";
+import type { Agent, Initiative, Task, TaskStatus } from "@/lib/types";
 import { TaskStatusBadge, PriorityBadge } from "@/components/common/status-badge";
 import { TimeAgo } from "@/components/common/time-ago";
 import { EmptyState } from "@/components/common/empty-state";
@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/common/empty-state";
 interface AllTasksTableProps {
   tasks: Task[];
   agents: Agent[];
-  projects: Project[];
+  initiatives: Initiative[];
   onTaskClick: (task: Task) => void;
 }
 
@@ -21,7 +21,7 @@ const statusFilter: Array<{ value: string; label: string }> = [
   { value: "blocked", label: "Blocked" },
 ];
 
-export function AllTasksTable({ tasks, agents, projects, onTaskClick }: AllTasksTableProps) {
+export function AllTasksTable({ tasks, agents, initiatives, onTaskClick }: AllTasksTableProps) {
   const [filter, setFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"updatedAt" | "priority" | "status">("updatedAt");
 
@@ -82,7 +82,7 @@ export function AllTasksTable({ tasks, agents, projects, onTaskClick }: AllTasks
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="text-left p-3 font-medium text-muted-foreground">Task</th>
-              <th className="text-left p-3 font-medium text-muted-foreground">Project</th>
+              <th className="text-left p-3 font-medium text-muted-foreground">Initiative</th>
               <th className="text-left p-3 font-medium text-muted-foreground">Status</th>
               <th className="text-left p-3 font-medium text-muted-foreground">Priority</th>
               <th className="text-left p-3 font-medium text-muted-foreground">Assignee</th>
@@ -91,10 +91,17 @@ export function AllTasksTable({ tasks, agents, projects, onTaskClick }: AllTasks
           </thead>
           <tbody>
             {sorted.map((task) => {
-              const project = projects.find((p) => p.id === task.projectId);
-              const assignee = task.assigneeAgentId
-                ? agents.find((a) => a.id === task.assigneeAgentId)
-                : null;
+              const initiative = initiatives.find(
+                (item) => item.id === task.initiativeId || item.id === task.projectId,
+              );
+              const assigneeIds = task.assigneeAgentIds?.length
+                ? task.assigneeAgentIds
+                : task.assigneeAgentId
+                  ? [task.assigneeAgentId]
+                  : [];
+              const assignees = assigneeIds
+                .map((id) => agents.find((a) => a.id === id))
+                .filter((agent): agent is Agent => Boolean(agent));
               return (
                 <tr
                   key={task.id}
@@ -105,7 +112,7 @@ export function AllTasksTable({ tasks, agents, projects, onTaskClick }: AllTasks
                     <span className="font-medium">{task.title}</span>
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {project?.name || task.projectId}
+                    {initiative?.name || task.initiativeId || task.projectId}
                   </td>
                   <td className="p-3">
                     <TaskStatusBadge status={task.status} />
@@ -114,7 +121,11 @@ export function AllTasksTable({ tasks, agents, projects, onTaskClick }: AllTasks
                     <PriorityBadge priority={task.priority} />
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {assignee?.name || (task.assigneeAgentId ? task.assigneeAgentId : "—")}
+                    {assignees.length > 0
+                      ? assignees.map((agent) => agent.name).join(", ")
+                      : assigneeIds.length > 0
+                        ? assigneeIds.join(", ")
+                        : "—"}
                   </td>
                   <td className="p-3">
                     <TimeAgo date={task.updatedAt} />

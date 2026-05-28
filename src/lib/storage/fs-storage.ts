@@ -118,27 +118,115 @@ function extractAgentIntro(metadata: unknown): AgentIntro | null {
   return { runtime, sessionKey, model, thread, workingDirectory, host };
 }
 
-async function readJson<T>(filePath: string): Promise<T | null> {
+function hasErrnoCode(err: unknown, code: string): boolean {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === code;
+}
+
+// --- Per-file write serialization ---
+// Concurrent writers to the same logical path must not interleave their
+// write+rename sequences. We chain operations per absolute path so each one
+// observes a consistent on-disk state. The chain continues regardless of
+// whether a prior operation resolved or rejected, and stale entries are pruned
+// once their tail settles to avoid unbounded map growth.
+const fileWriteQueues = new Map<string, Promise<unknown>>();
+
+function withFileLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = fileWriteQueues.get(key) ?? Promise.resolve();
+  const run = previous.then(fn, fn);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  fileWriteQueues.set(key, settled);
+  void settled.then(() => {
+    if (fileWriteQueues.get(key) === settled) {
+      fileWriteQueues.delete(key);
+    }
+  });
+  return run;
+}
+
+// --- Corrupt-file quarantine ---
+// A file whose bytes cannot be parsed as JSON is unrecoverable for the running
+// process. Rather than repeatedly failing to read it (or, worse, letting a
+// caller crash on it), we move it aside into a quarantine directory so the
+// system keeps running and a human can inspect the bad data later.
+function quarantineDir(): string {
+  return path.join(getDataDir(), ".quarantine");
+}
+
+async function quarantineFile(filePath: string, reason: string): Promise<void> {
   try {
-    const content = await readFile(filePath, "utf-8");
-    return JSON.parse(content) as T;
-  } catch (err: unknown) {
-    if (err instanceof SyntaxError) {
-      console.error(`Corrupted JSON in ${filePath}:`, err.message);
-      return null;
-    }
-    if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "ENOENT") {
-      return null;
-    }
-    throw err;
+    const dir = quarantineDir();
+    await mkdir(dir, { recursive: true });
+    const stamp = timestamp().replace(/[:.]/g, "-");
+    const dest = path.join(dir, `${stamp}-${randomUUID().slice(0, 8)}-${path.basename(filePath)}`);
+    await rename(filePath, dest);
+    console.error(`Quarantined corrupt file ${filePath} -> ${dest} (${reason})`);
+  } catch (err) {
+    // Quarantine is best-effort; never let it mask the original read outcome.
+    console.error(`Failed to quarantine ${filePath}:`, err);
   }
 }
 
+// A stored entity is only usable if it parsed to an object carrying a string id.
+// Anything else is either a transient reservation placeholder (see
+// resolveUniqueId) or structurally unusable, and is skipped on read.
+function isEntityRecord(value: unknown): boolean {
+  return isRecord(value) && typeof value.id === "string" && value.id.length > 0;
+}
+
+/**
+ * Reads and parses a JSON file.
+ *
+ * - Missing file (ENOENT) -> null.
+ * - Unparseable bytes -> the file is quarantined and null is returned, so a
+ *   single corrupt file can never crash or wedge a read path.
+ * - When a `validate` guard is supplied, a parsed value that fails validation
+ *   is skipped (null) but left in place — it may be a newer/older schema or an
+ *   in-flight reservation placeholder that we should not destroy.
+ */
+async function readJson<T>(filePath: string, validate?: (value: unknown) => boolean): Promise<T | null> {
+  let content: string;
+  try {
+    content = await readFile(filePath, "utf-8");
+  } catch (err: unknown) {
+    if (hasErrnoCode(err, "ENOENT")) return null;
+    throw err;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (err) {
+    console.error(`Corrupted JSON in ${filePath}:`, (err as Error).message);
+    await quarantineFile(filePath, "invalid JSON");
+    return null;
+  }
+
+  if (validate && !validate(parsed)) {
+    console.error(`Schema validation failed for ${filePath}; skipping`);
+    return null;
+  }
+
+  return parsed as T;
+}
+
 async function writeJson(filePath: string, data: unknown): Promise<void> {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const tmpPath = filePath + ".tmp";
-  await writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-  await rename(tmpPath, filePath);
+  // Serialize per final path so concurrent writers cannot clobber each other.
+  await withFileLock(filePath, async () => {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    // Unique temp path per write: a shared `${filePath}.tmp` would be raced by
+    // concurrent writers, producing a torn/garbage final file after rename.
+    const tmpPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+      await rename(tmpPath, filePath);
+    } catch (err) {
+      await rm(tmpPath, { force: true }).catch(() => {});
+      throw err;
+    }
+  });
 }
 
 async function listDir(dirPath: string): Promise<string[]> {
@@ -222,6 +310,13 @@ async function resolveUniqueId(filePathForId: (id: string) => string, desiredId:
   }
 }
 
+// Defensive string compare for sort keys that may be missing on partially
+// written or legacy records — `undefined.localeCompare` would throw and take
+// down an entire list endpoint.
+function compareStr(a: string | undefined, b: string | undefined): number {
+  return (a ?? "").localeCompare(b ?? "");
+}
+
 function normalizeAssignees(task: Partial<Task>): string[] {
   if (task.assigneeAgentIds && task.assigneeAgentIds.length > 0) {
     return Array.from(new Set(task.assigneeAgentIds.filter(Boolean)));
@@ -292,7 +387,7 @@ export class FsStorage implements Storage {
 
     for (const projectId of projectIds) {
       const legacyProjectPath = path.join(legacyProjectsDir(boardId), projectId, "project.json");
-      const legacyProject = await readJson<Project>(legacyProjectPath);
+      const legacyProject = await readJson<Project>(legacyProjectPath, isEntityRecord);
       if (!legacyProject) continue;
 
       const nextInitiative: Initiative = {
@@ -316,7 +411,7 @@ export class FsStorage implements Storage {
 
       for (const taskName of taskFiles) {
         if (!taskName.endsWith(".json")) continue;
-        const legacyTask = await readJson<Task>(path.join(legacyTaskDir, taskName));
+        const legacyTask = await readJson<Task>(path.join(legacyTaskDir, taskName), isEntityRecord);
         if (!legacyTask) continue;
 
         const normalized = normalizeTask(legacyTask, projectId);
@@ -366,8 +461,13 @@ export class FsStorage implements Storage {
     };
 
     const dailyFile = path.join(eventsDir(boardId), `${createdAt.slice(0, 10)}.ndjson`);
-    await mkdir(eventsDir(boardId), { recursive: true });
-    await appendFile(dailyFile, `${JSON.stringify(activity)}\n`, "utf-8");
+    // Serialize appends to the same daily file so concurrent events cannot
+    // interleave partial lines; listActivity already tolerates the rare torn
+    // line, but serialization keeps the common case clean.
+    await withFileLock(dailyFile, async () => {
+      await mkdir(eventsDir(boardId), { recursive: true });
+      await appendFile(dailyFile, `${JSON.stringify(activity)}\n`, "utf-8");
+    });
 
     return activity;
   }
@@ -444,15 +544,15 @@ export class FsStorage implements Storage {
     const boards: Board[] = [];
 
     for (const d of dirs) {
-      const board = await readJson<Board>(path.join(boardsDir, d, "board.json"));
+      const board = await readJson<Board>(path.join(boardsDir, d, "board.json"), isEntityRecord);
       if (board) boards.push(board);
     }
 
-    return boards.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return boards.sort((a, b) => compareStr(b.createdAt, a.createdAt));
   }
 
   async getBoard(boardId: string): Promise<Board | null> {
-    return readJson<Board>(path.join(boardDir(boardId), "board.json"));
+    return readJson<Board>(path.join(boardDir(boardId), "board.json"), isEntityRecord);
   }
 
   async getBoardSummary(boardId: string): Promise<BoardSummary | null> {
@@ -461,15 +561,29 @@ export class FsStorage implements Storage {
     const board = await this.getBoard(boardId);
     if (!board) return null;
 
+    // Isolate each section: a failure (corrupt subtree, transient FS error)
+    // in one count must not blank out the whole summary. Each section falls
+    // back to an empty result and the board still renders.
+    const safeSection = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error(`Board summary section "${label}" failed for ${boardId}:`, err);
+        return fallback;
+      }
+    };
+
     const [agents, initiatives, tasks] = await Promise.all([
-      this.listAgents(boardId),
-      this.listInitiatives(boardId),
-      this.listAllBoardTasks(boardId),
+      safeSection("agents", () => this.listAgents(boardId), [] as Agent[]),
+      safeSection("initiatives", () => this.listInitiatives(boardId), [] as Initiative[]),
+      safeSection("tasks", () => this.listAllBoardTasks(boardId), [] as Task[]),
     ]);
 
     // Parallelize plan reads across initiatives
     const plansByInitiative = await Promise.all(
-      initiatives.map((initiative) => this.listPlans(boardId, initiative.id)),
+      initiatives.map((initiative) =>
+        safeSection(`plans:${initiative.id}`, () => this.listPlans(boardId, initiative.id), [] as Plan[]),
+      ),
     );
 
     const allPlans = plansByInitiative.flat();
@@ -477,7 +591,11 @@ export class FsStorage implements Storage {
     // Parallelize step counts across plans
     const stepsByPlan = await Promise.all(
       allPlans.map((plan) =>
-        this.listPlanSteps(boardId, plan.initiativeId, plan.id),
+        safeSection(
+          `steps:${plan.id}`,
+          () => this.listPlanSteps(boardId, plan.initiativeId, plan.id),
+          [] as PlanStep[],
+        ),
       ),
     );
 
@@ -596,7 +714,7 @@ export class FsStorage implements Storage {
 
     for (const f of files) {
       if (!f.endsWith(".json")) continue;
-      const agent = await readJson<Agent>(path.join(agentsDir(boardId), f));
+      const agent = await readJson<Agent>(path.join(agentsDir(boardId), f), isEntityRecord);
       if (!agent) continue;
 
       agents.push({
@@ -605,13 +723,13 @@ export class FsStorage implements Storage {
       });
     }
 
-    return agents.sort((a, b) => a.name.localeCompare(b.name));
+    return agents.sort((a, b) => compareStr(a.name, b.name));
   }
 
   async getAgent(boardId: string, agentId: string): Promise<Agent | null> {
     await this.ensureBoardStructure(boardId);
 
-    const agent = await readJson<Agent>(path.join(agentsDir(boardId), `${agentId}.json`));
+    const agent = await readJson<Agent>(path.join(agentsDir(boardId), `${agentId}.json`), isEntityRecord);
     if (!agent) return null;
 
     return {
@@ -736,7 +854,7 @@ export class FsStorage implements Storage {
 
     for (const f of files) {
       if (!f.endsWith(".json")) continue;
-      const initiative = await readJson<Initiative>(path.join(initiativesDir(boardId), f));
+      const initiative = await readJson<Initiative>(path.join(initiativesDir(boardId), f), isEntityRecord);
       if (initiative) {
         initiatives.push({
           ...initiative,
@@ -747,13 +865,13 @@ export class FsStorage implements Storage {
       }
     }
 
-    return initiatives.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return initiatives.sort((a, b) => compareStr(a.createdAt, b.createdAt));
   }
 
   async getInitiative(boardId: string, initiativeId: string): Promise<Initiative | null> {
     await this.ensureBoardStructure(boardId);
 
-    const initiative = await readJson<Initiative>(initiativeFile(boardId, initiativeId));
+    const initiative = await readJson<Initiative>(initiativeFile(boardId, initiativeId), isEntityRecord);
     if (!initiative) return null;
 
     return {
@@ -866,7 +984,7 @@ export class FsStorage implements Storage {
     const plans: Plan[] = [];
     for (const fileName of files) {
       if (!fileName.endsWith(".json")) continue;
-      const plan = await readJson<Plan>(path.join(plansDir(boardId, initiativeId), fileName));
+      const plan = await readJson<Plan>(path.join(plansDir(boardId, initiativeId), fileName), isEntityRecord);
       if (!plan) continue;
       plans.push({
         ...plan,
@@ -877,13 +995,13 @@ export class FsStorage implements Storage {
       });
     }
 
-    return plans.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return plans.sort((a, b) => compareStr(a.createdAt, b.createdAt));
   }
 
   async getPlan(boardId: string, initiativeId: string, planId: string): Promise<Plan | null> {
     await this.ensureBoardStructure(boardId);
 
-    const plan = await readJson<Plan>(planFile(boardId, initiativeId, planId));
+    const plan = await readJson<Plan>(planFile(boardId, initiativeId, planId), isEntityRecord);
     if (!plan) return null;
 
     return {
@@ -1024,7 +1142,10 @@ export class FsStorage implements Storage {
     const steps: PlanStep[] = [];
     for (const fileName of files) {
       if (!fileName.endsWith(".json")) continue;
-      const step = await readJson<PlanStep>(path.join(planStepsDir(boardId, initiativeId, planId), fileName));
+      const step = await readJson<PlanStep>(
+        path.join(planStepsDir(boardId, initiativeId, planId), fileName),
+        isEntityRecord,
+      );
       if (!step) continue;
       steps.push({
         ...step,
@@ -1034,7 +1155,7 @@ export class FsStorage implements Storage {
       });
     }
 
-    return steps.sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+    return steps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || compareStr(a.createdAt, b.createdAt));
   }
 
   async getPlanStep(
@@ -1045,7 +1166,7 @@ export class FsStorage implements Storage {
   ): Promise<PlanStep | null> {
     await this.ensureBoardStructure(boardId);
 
-    const step = await readJson<PlanStep>(planStepFile(boardId, initiativeId, planId, stepId));
+    const step = await readJson<PlanStep>(planStepFile(boardId, initiativeId, planId, stepId), isEntityRecord);
     if (!step) return null;
 
     return {
@@ -1236,7 +1357,7 @@ export class FsStorage implements Storage {
 
     for (const f of files) {
       if (!f.endsWith(".json")) continue;
-      const task = await readJson<Task>(path.join(tasksDir(boardId, initiativeId), f));
+      const task = await readJson<Task>(path.join(tasksDir(boardId, initiativeId), f), isEntityRecord);
       if (task) {
         tasks.push(normalizeTask(task, initiativeId));
       }
@@ -1250,7 +1371,7 @@ export class FsStorage implements Storage {
     }
     if (filters?.tag) tasks = tasks.filter((t) => t.tags.includes(filters.tag as string));
 
-    return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return tasks.sort((a, b) => compareStr(a.createdAt, b.createdAt));
   }
 
   async listAllBoardTasks(boardId: string, filters?: { status?: string; assignee?: string; tag?: string }): Promise<Task[]> {
@@ -1262,13 +1383,13 @@ export class FsStorage implements Storage {
       allTasks.push(...tasks);
     }
 
-    return allTasks.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return allTasks.sort((a, b) => compareStr(b.updatedAt, a.updatedAt));
   }
 
   async getTask(boardId: string, initiativeId: string, taskId: string): Promise<Task | null> {
     await this.ensureBoardStructure(boardId);
 
-    const task = await readJson<Task>(taskFile(boardId, initiativeId, taskId));
+    const task = await readJson<Task>(taskFile(boardId, initiativeId, taskId), isEntityRecord);
     if (!task) return null;
 
     return normalizeTask(task, initiativeId);
@@ -1416,7 +1537,7 @@ export class FsStorage implements Storage {
       filtered = filtered.filter((e) => e.taskId === options.taskId);
     }
 
-    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    filtered.sort((a, b) => compareStr(b.createdAt, a.createdAt));
 
     return filtered.slice(0, limit);
   }

@@ -38,11 +38,17 @@ export function getDataDir(): string {
   }
 
   const fallback = path.join(os.tmpdir(), "agentboard", "data");
-  fs.mkdirSync(fallback, { recursive: true });
-  console.warn(
-    `[agentboard] data dir ${preferred} is not writable; falling back to ${fallback}. ` +
-      `Data is ephemeral here (e.g. serverless) — set AGENTBOARD_DATA_DIR to a durable path for persistence.`,
+  if (ensureWritableDir(fallback)) {
+    console.warn(
+      `[agentboard] data dir ${preferred} is not writable; falling back to ${fallback}. ` +
+        `Data is ephemeral here (e.g. serverless) — set AGENTBOARD_DATA_DIR to a durable path for persistence.`,
+    );
+    cachedDataDir = fallback;
+    return cachedDataDir;
+  }
+
+  throw new Error(
+    `[agentboard] no writable data directory (tried ${preferred} and ${fallback}). ` +
+      `Set AGENTBOARD_DATA_DIR to a writable path.`,
   );
-  cachedDataDir = fallback;
-  return cachedDataDir;
 }

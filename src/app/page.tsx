@@ -14,12 +14,13 @@ export default function HomePage() {
   // with the dev default so the server render and first client render match,
   // then corrected to the real origin after mount.
   const [baseUrl, setBaseUrl] = useState("http://localhost:4040");
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     // window.location is only available client-side; syncing after mount keeps
     // the SSR/first-client render in agreement (no hydration mismatch).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBaseUrl(window.location.origin);
   }, []);
 
@@ -36,14 +37,25 @@ export default function HomePage() {
   const createBoard = async () => {
     const name = prompt("Board name:");
     if (!name) return;
-    const res = await fetch("/api/boards", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const data = await res.json();
-    if (data.ok) {
-      router.push(`/boards/${data.data.id}`);
+    setError(null);
+    setCreating(true);
+    try {
+      const res = await fetch("/api/boards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        router.push(`/boards/${data.data.id}`);
+        return;
+      }
+      // Surface the failure instead of silently doing nothing.
+      setError(data?.error?.message || `Could not create board (HTTP ${res.status}). Please try again.`);
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -79,9 +91,10 @@ export default function HomePage() {
                 </button>
               ))}
             </div>
-            <Button onClick={createBoard} variant="outline" className="mt-4">
-              Create another board
+            <Button onClick={createBoard} variant="outline" className="mt-4" disabled={creating}>
+              {creating ? "Creating…" : "Create another board"}
             </Button>
+            {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
           </div>
         </div>
       </div>
@@ -104,9 +117,10 @@ export default function HomePage() {
             </p>
           </div>
 
-          <Button onClick={createBoard} size="lg">
-            Create your first board
+          <Button onClick={createBoard} size="lg" disabled={creating}>
+            {creating ? "Creating…" : "Create your first board"}
           </Button>
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <div className="text-left">
             <p className="text-sm text-muted-foreground mb-2">Or create via API:</p>

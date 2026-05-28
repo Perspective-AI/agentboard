@@ -9,7 +9,19 @@ import { Button } from "@/components/ui/button";
 export default function HomePage() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
+  // Resolve the API base URL from the actual origin so copy-paste snippets work
+  // on any deployment (e.g. https://agentboard.sh), not just local dev. Seeded
+  // with the dev default so the server render and first client render match,
+  // then corrected to the real origin after mount.
+  const [baseUrl, setBaseUrl] = useState("http://localhost:4040");
   const router = useRouter();
+
+  useEffect(() => {
+    // window.location is only available client-side; syncing after mount keeps
+    // the SSR/first-client render in agreement (no hydration mismatch).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBaseUrl(window.location.origin);
+  }, []);
 
   useEffect(() => {
     fetch("/api/boards")
@@ -99,7 +111,7 @@ export default function HomePage() {
           <div className="text-left">
             <p className="text-sm text-muted-foreground mb-2">Or create via API:</p>
             <pre className="bg-muted text-foreground p-3 rounded-lg overflow-x-auto text-xs">
-{`curl -X POST http://localhost:4040/api/boards \\
+{`curl -X POST ${baseUrl}/api/boards \\
   -H "Content-Type: application/json" \\
   -d '{"name": "My Team Board"}'`}
             </pre>

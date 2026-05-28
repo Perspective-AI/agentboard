@@ -1475,7 +1475,7 @@ export class FsStorage implements Storage {
     if (!existsSync(filePath)) return false;
 
     const task = await this.getTask(boardId, initiativeId, taskId);
-    await rm(filePath);
+    await rm(filePath, { force: true });
 
     if (task) {
       await this.syncAgentPointersForTask(boardId, { ...task, status: "todo" as TaskStatus });

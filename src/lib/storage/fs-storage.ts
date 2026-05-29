@@ -51,7 +51,10 @@ export async function getStorage(): Promise<Storage> {
       const storage = new DocumentStorage(await selectObjectStore());
       globalForStorage._agentboardStorage = storage;
       return storage;
-    })();
+    })().catch((err) => {
+      globalForStorage._agentboardStoragePromise = undefined;
+      throw err;
+    });
   }
   return globalForStorage._agentboardStoragePromise;
 }

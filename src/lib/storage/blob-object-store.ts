@@ -98,7 +98,7 @@ export class BlobObjectStore implements ObjectStore {
 
   async exists(key: string): Promise<boolean> {
     try {
-      await head(key);
+      await head(key, { access: ACCESS });
       return true;
     } catch (err) {
       if (isNotFound(err)) return false;

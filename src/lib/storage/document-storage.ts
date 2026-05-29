@@ -12,7 +12,7 @@ import type {
   TaskStatus,
 } from "@/lib/types";
 import type { Storage } from "./index";
-import type { KvStore } from "./kv";
+import type { ObjectStore } from "./object-store";
 import { slugify, timestamp } from "@/lib/utils";
 
 type AgentIntro = {
@@ -211,16 +211,16 @@ function migrationMarkerFile(boardId: string): string {
 
 /**
  * Backend-agnostic storage implementation. All durability and concurrency
- * primitives are delegated to the injected KvStore; this class owns the data
+ * primitives are delegated to the injected ObjectStore; this class owns the data
  * model, validation, normalization, and activity logging.
  */
 export class DocumentStorage implements Storage {
-  protected kv: KvStore;
+  protected store: ObjectStore;
   private initializedBoards = new Set<string>();
   private initializingBoards = new Map<string, Promise<void>>();
 
-  constructor(kv: KvStore) {
-    this.kv = kv;
+  constructor(store: ObjectStore) {
+    this.store = store;
   }
 
   private async ensureBoardStructure(boardId: string): Promise<void> {
@@ -245,11 +245,11 @@ export class DocumentStorage implements Storage {
   }
 
   private async migrateLegacyProjects(boardId: string): Promise<void> {
-    if (await this.kv.exists(migrationMarkerFile(boardId))) return;
+    if (await this.store.exists(migrationMarkerFile(boardId))) return;
 
-    const projectIds = await this.kv.listChildren(legacyProjectsDir(boardId));
+    const projectIds = await this.store.listChildren(legacyProjectsDir(boardId));
     if (projectIds.length === 0) {
-      await this.kv.put(migrationMarkerFile(boardId), { version: 2, migratedAt: timestamp(), migratedProjects: 0 });
+      await this.store.put(migrationMarkerFile(boardId), { version: 2, migratedAt: timestamp(), migratedProjects: 0 });
       return;
     }
 
@@ -258,7 +258,7 @@ export class DocumentStorage implements Storage {
 
     for (const projectId of projectIds) {
       const legacyProjectKey = `${legacyProjectsDir(boardId)}/${projectId}/project.json`;
-      const legacyProject = await this.kv.get<Project>(legacyProjectKey, isEntityRecord);
+      const legacyProject = await this.store.get<Project>(legacyProjectKey, isEntityRecord);
       if (!legacyProject) continue;
 
       const nextInitiative: Initiative = {
@@ -273,22 +273,22 @@ export class DocumentStorage implements Storage {
         updatedAt: legacyProject.updatedAt || legacyProject.createdAt || timestamp(),
       };
 
-      if (!(await this.kv.exists(initiativeFile(boardId, projectId)))) {
-        await this.kv.put(initiativeFile(boardId, projectId), nextInitiative);
+      if (!(await this.store.exists(initiativeFile(boardId, projectId)))) {
+        await this.store.put(initiativeFile(boardId, projectId), nextInitiative);
       }
 
       const legacyTaskDir = `${legacyProjectsDir(boardId)}/${projectId}/tasks`;
-      const taskFiles = await this.kv.listChildren(legacyTaskDir);
+      const taskFiles = await this.store.listChildren(legacyTaskDir);
 
       for (const taskName of taskFiles) {
         if (!taskName.endsWith(".json")) continue;
-        const legacyTask = await this.kv.get<Task>(`${legacyTaskDir}/${taskName}`, isEntityRecord);
+        const legacyTask = await this.store.get<Task>(`${legacyTaskDir}/${taskName}`, isEntityRecord);
         if (!legacyTask) continue;
 
         const normalized = normalizeTask(legacyTask, projectId);
         const nextTaskKey = taskFile(boardId, projectId, normalized.id);
-        if (!(await this.kv.exists(nextTaskKey))) {
-          await this.kv.put(nextTaskKey, normalized);
+        if (!(await this.store.exists(nextTaskKey))) {
+          await this.store.put(nextTaskKey, normalized);
           migratedTasks += 1;
         }
       }
@@ -296,7 +296,7 @@ export class DocumentStorage implements Storage {
       migratedProjects += 1;
     }
 
-    await this.kv.put(migrationMarkerFile(boardId), {
+    await this.store.put(migrationMarkerFile(boardId), {
       version: 2,
       migratedAt: timestamp(),
       migratedProjects,
@@ -314,7 +314,7 @@ export class DocumentStorage implements Storage {
     let candidate = desiredId;
     let counter = 2;
     for (;;) {
-      if (await this.kv.createIfAbsent(keyForId(candidate))) {
+      if (await this.store.createIfAbsent(keyForId(candidate))) {
         return candidate;
       }
       candidate = `${desiredId}-${counter}`;
@@ -334,13 +334,13 @@ export class DocumentStorage implements Storage {
       ...event,
     };
 
-    await this.kv.appendEvent(eventsDir(boardId), createdAt.slice(0, 10), activity);
+    await this.store.appendEvent(eventsDir(boardId), createdAt.slice(0, 10), activity);
 
     return activity;
   }
 
   private async writeAgent(boardId: string, agent: Agent): Promise<void> {
-    await this.kv.put(agentFile(boardId, agent.id), agent);
+    await this.store.put(agentFile(boardId, agent.id), agent);
   }
 
   private async requireRegisteredAgent(boardId: string, agentId: string): Promise<Agent> {
@@ -397,17 +397,17 @@ export class DocumentStorage implements Storage {
       updatedAt: now,
     };
 
-    await this.kv.put(boardFile(id), board);
+    await this.store.put(boardFile(id), board);
 
     return board;
   }
 
   async listBoards(): Promise<Board[]> {
-    const dirs = await this.kv.listChildren("boards");
+    const dirs = await this.store.listChildren("boards");
     const boards: Board[] = [];
 
     for (const d of dirs) {
-      const board = await this.kv.get<Board>(`${boardDir(d)}/board.json`, isEntityRecord);
+      const board = await this.store.get<Board>(`${boardDir(d)}/board.json`, isEntityRecord);
       if (board) boards.push(board);
     }
 
@@ -415,7 +415,7 @@ export class DocumentStorage implements Storage {
   }
 
   async getBoard(boardId: string): Promise<Board | null> {
-    return this.kv.get<Board>(boardFile(boardId), isEntityRecord);
+    return this.store.get<Board>(boardFile(boardId), isEntityRecord);
   }
 
   async getBoardSummary(boardId: string): Promise<BoardSummary | null> {
@@ -479,7 +479,7 @@ export class DocumentStorage implements Storage {
     if (!board) return null;
 
     const updated = { ...board, ...data, updatedAt: timestamp() };
-    await this.kv.put(boardFile(boardId), updated);
+    await this.store.put(boardFile(boardId), updated);
 
     await this.appendActivity(boardId, {
       type: "board.updated",
@@ -491,8 +491,8 @@ export class DocumentStorage implements Storage {
   }
 
   async deleteBoard(boardId: string): Promise<boolean> {
-    if (!(await this.kv.exists(boardFile(boardId)))) return false;
-    await this.kv.deletePrefix(boardDir(boardId));
+    if (!(await this.store.exists(boardFile(boardId)))) return false;
+    await this.store.deletePrefix(boardDir(boardId));
     this.initializedBoards.delete(boardId);
     return true;
   }
@@ -568,12 +568,12 @@ export class DocumentStorage implements Storage {
   async listAgents(boardId: string): Promise<Agent[]> {
     await this.ensureBoardStructure(boardId);
 
-    const files = await this.kv.listChildren(agentsDir(boardId));
+    const files = await this.store.listChildren(agentsDir(boardId));
     const agents: Agent[] = [];
 
     for (const f of files) {
       if (!f.endsWith(".json")) continue;
-      const agent = await this.kv.get<Agent>(`${agentsDir(boardId)}/${f}`, isEntityRecord);
+      const agent = await this.store.get<Agent>(`${agentsDir(boardId)}/${f}`, isEntityRecord);
       if (!agent) continue;
 
       agents.push({
@@ -588,7 +588,7 @@ export class DocumentStorage implements Storage {
   async getAgent(boardId: string, agentId: string): Promise<Agent | null> {
     await this.ensureBoardStructure(boardId);
 
-    const agent = await this.kv.get<Agent>(agentFile(boardId, agentId), isEntityRecord);
+    const agent = await this.store.get<Agent>(agentFile(boardId, agentId), isEntityRecord);
     if (!agent) return null;
 
     return {
@@ -628,8 +628,8 @@ export class DocumentStorage implements Storage {
   async deleteAgent(boardId: string, agentId: string): Promise<boolean> {
     await this.ensureBoardStructure(boardId);
 
-    if (!(await this.kv.exists(agentFile(boardId, agentId)))) return false;
-    await this.kv.delete(agentFile(boardId, agentId));
+    if (!(await this.store.exists(agentFile(boardId, agentId)))) return false;
+    await this.store.delete(agentFile(boardId, agentId));
 
     await this.appendActivity(boardId, {
       type: "agent.removed",
@@ -690,7 +690,7 @@ export class DocumentStorage implements Storage {
       updatedAt: now,
     };
 
-    await this.kv.put(initiativeFile(boardId, id), initiative);
+    await this.store.put(initiativeFile(boardId, id), initiative);
 
     await this.appendActivity(boardId, {
       type: "initiative.created",
@@ -705,12 +705,12 @@ export class DocumentStorage implements Storage {
   async listInitiatives(boardId: string): Promise<Initiative[]> {
     await this.ensureBoardStructure(boardId);
 
-    const files = await this.kv.listChildren(initiativesDir(boardId));
+    const files = await this.store.listChildren(initiativesDir(boardId));
     const initiatives: Initiative[] = [];
 
     for (const f of files) {
       if (!f.endsWith(".json")) continue;
-      const initiative = await this.kv.get<Initiative>(`${initiativesDir(boardId)}/${f}`, isEntityRecord);
+      const initiative = await this.store.get<Initiative>(`${initiativesDir(boardId)}/${f}`, isEntityRecord);
       if (initiative) {
         initiatives.push({
           ...initiative,
@@ -727,7 +727,7 @@ export class DocumentStorage implements Storage {
   async getInitiative(boardId: string, initiativeId: string): Promise<Initiative | null> {
     await this.ensureBoardStructure(boardId);
 
-    const initiative = await this.kv.get<Initiative>(initiativeFile(boardId, initiativeId), isEntityRecord);
+    const initiative = await this.store.get<Initiative>(initiativeFile(boardId, initiativeId), isEntityRecord);
     if (!initiative) return null;
 
     return {
@@ -754,7 +754,7 @@ export class DocumentStorage implements Storage {
       updatedAt: timestamp(),
     };
 
-    await this.kv.put(initiativeFile(boardId, initiativeId), updated);
+    await this.store.put(initiativeFile(boardId, initiativeId), updated);
 
     await this.appendActivity(boardId, {
       type: "initiative.updated",
@@ -769,12 +769,12 @@ export class DocumentStorage implements Storage {
   async deleteInitiative(boardId: string, initiativeId: string): Promise<boolean> {
     await this.ensureBoardStructure(boardId);
 
-    const hasFile = await this.kv.exists(initiativeFile(boardId, initiativeId));
-    const children = await this.kv.listChildren(initiativeSubdir(boardId, initiativeId));
+    const hasFile = await this.store.exists(initiativeFile(boardId, initiativeId));
+    const children = await this.store.listChildren(initiativeSubdir(boardId, initiativeId));
     if (!hasFile && children.length === 0) return false;
 
-    await this.kv.delete(initiativeFile(boardId, initiativeId));
-    await this.kv.deletePrefix(initiativeSubdir(boardId, initiativeId));
+    await this.store.delete(initiativeFile(boardId, initiativeId));
+    await this.store.deletePrefix(initiativeSubdir(boardId, initiativeId));
 
     await this.appendActivity(boardId, {
       type: "initiative.removed",
@@ -817,7 +817,7 @@ export class DocumentStorage implements Storage {
       completedAt: null,
     };
 
-    await this.kv.put(planFile(boardId, initiativeId, id), plan);
+    await this.store.put(planFile(boardId, initiativeId, id), plan);
 
     await this.appendActivity(boardId, {
       type: "plan.created",
@@ -833,11 +833,11 @@ export class DocumentStorage implements Storage {
   async listPlans(boardId: string, initiativeId: string): Promise<Plan[]> {
     await this.ensureBoardStructure(boardId);
 
-    const files = await this.kv.listChildren(plansDir(boardId, initiativeId));
+    const files = await this.store.listChildren(plansDir(boardId, initiativeId));
     const plans: Plan[] = [];
     for (const fileName of files) {
       if (!fileName.endsWith(".json")) continue;
-      const plan = await this.kv.get<Plan>(`${plansDir(boardId, initiativeId)}/${fileName}`, isEntityRecord);
+      const plan = await this.store.get<Plan>(`${plansDir(boardId, initiativeId)}/${fileName}`, isEntityRecord);
       if (!plan) continue;
       plans.push({
         ...plan,
@@ -854,7 +854,7 @@ export class DocumentStorage implements Storage {
   async getPlan(boardId: string, initiativeId: string, planId: string): Promise<Plan | null> {
     await this.ensureBoardStructure(boardId);
 
-    const plan = await this.kv.get<Plan>(planFile(boardId, initiativeId, planId), isEntityRecord);
+    const plan = await this.store.get<Plan>(planFile(boardId, initiativeId, planId), isEntityRecord);
     if (!plan) return null;
 
     return {
@@ -892,7 +892,7 @@ export class DocumentStorage implements Storage {
       tags: data.tags || current.tags,
     };
 
-    await this.kv.put(planFile(boardId, initiativeId, planId), updated);
+    await this.store.put(planFile(boardId, initiativeId, planId), updated);
 
     const statusChange = data.status && data.status !== current.status;
     await this.appendActivity(boardId, {
@@ -911,19 +911,19 @@ export class DocumentStorage implements Storage {
   async deletePlan(boardId: string, initiativeId: string, planId: string): Promise<boolean> {
     await this.ensureBoardStructure(boardId);
 
-    const hasFile = await this.kv.exists(planFile(boardId, initiativeId, planId));
-    const children = await this.kv.listChildren(planSubdir(boardId, initiativeId, planId));
+    const hasFile = await this.store.exists(planFile(boardId, initiativeId, planId));
+    const children = await this.store.listChildren(planSubdir(boardId, initiativeId, planId));
     if (!hasFile && children.length === 0) return false;
 
     const tasks = await this.listTasks(boardId, initiativeId);
     for (const task of tasks) {
       if (task.planId !== planId) continue;
       const detached: Task = { ...task, planId: null, planStepId: null, updatedAt: timestamp() };
-      await this.kv.put(taskFile(boardId, initiativeId, task.id), detached);
+      await this.store.put(taskFile(boardId, initiativeId, task.id), detached);
     }
 
-    await this.kv.delete(planFile(boardId, initiativeId, planId));
-    await this.kv.deletePrefix(planSubdir(boardId, initiativeId, planId));
+    await this.store.delete(planFile(boardId, initiativeId, planId));
+    await this.store.deletePrefix(planSubdir(boardId, initiativeId, planId));
 
     await this.appendActivity(boardId, {
       type: "plan.removed",
@@ -974,7 +974,7 @@ export class DocumentStorage implements Storage {
       completedAt: null,
     };
 
-    await this.kv.put(planStepFile(boardId, initiativeId, planId, id), step);
+    await this.store.put(planStepFile(boardId, initiativeId, planId, id), step);
 
     await this.appendActivity(boardId, {
       type: "plan_step.created",
@@ -990,11 +990,11 @@ export class DocumentStorage implements Storage {
   async listPlanSteps(boardId: string, initiativeId: string, planId: string): Promise<PlanStep[]> {
     await this.ensureBoardStructure(boardId);
 
-    const files = await this.kv.listChildren(planStepsDir(boardId, initiativeId, planId));
+    const files = await this.store.listChildren(planStepsDir(boardId, initiativeId, planId));
     const steps: PlanStep[] = [];
     for (const fileName of files) {
       if (!fileName.endsWith(".json")) continue;
-      const step = await this.kv.get<PlanStep>(
+      const step = await this.store.get<PlanStep>(
         `${planStepsDir(boardId, initiativeId, planId)}/${fileName}`,
         isEntityRecord,
       );
@@ -1018,7 +1018,7 @@ export class DocumentStorage implements Storage {
   ): Promise<PlanStep | null> {
     await this.ensureBoardStructure(boardId);
 
-    const step = await this.kv.get<PlanStep>(planStepFile(boardId, initiativeId, planId, stepId), isEntityRecord);
+    const step = await this.store.get<PlanStep>(planStepFile(boardId, initiativeId, planId, stepId), isEntityRecord);
     if (!step) return null;
 
     return {
@@ -1056,7 +1056,7 @@ export class DocumentStorage implements Storage {
       order: data.order ?? current.order,
     };
 
-    await this.kv.put(planStepFile(boardId, initiativeId, planId, stepId), updated);
+    await this.store.put(planStepFile(boardId, initiativeId, planId, stepId), updated);
 
     const statusChange = data.status && data.status !== current.status;
     await this.appendActivity(boardId, {
@@ -1075,18 +1075,18 @@ export class DocumentStorage implements Storage {
   async deletePlanStep(boardId: string, initiativeId: string, planId: string, stepId: string): Promise<boolean> {
     await this.ensureBoardStructure(boardId);
 
-    if (!(await this.kv.exists(planStepFile(boardId, initiativeId, planId, stepId)))) return false;
+    if (!(await this.store.exists(planStepFile(boardId, initiativeId, planId, stepId)))) return false;
 
     // Detach tasks FIRST, then delete the step — prevents orphaned references.
     const tasks = await this.listTasks(boardId, initiativeId);
     for (const task of tasks) {
       if (task.planId === planId && task.planStepId === stepId) {
         const detached: Task = { ...task, planStepId: null, updatedAt: timestamp() };
-        await this.kv.put(taskFile(boardId, initiativeId, task.id), detached);
+        await this.store.put(taskFile(boardId, initiativeId, task.id), detached);
       }
     }
 
-    await this.kv.delete(planStepFile(boardId, initiativeId, planId, stepId));
+    await this.store.delete(planStepFile(boardId, initiativeId, planId, stepId));
 
     await this.appendActivity(boardId, {
       type: "plan_step.removed",
@@ -1182,7 +1182,7 @@ export class DocumentStorage implements Storage {
       initiativeId,
     );
 
-    await this.kv.put(taskFile(boardId, initiativeId, id), task);
+    await this.store.put(taskFile(boardId, initiativeId, id), task);
 
     await this.appendActivity(boardId, {
       type: "task.created",
@@ -1206,12 +1206,12 @@ export class DocumentStorage implements Storage {
   ): Promise<Task[]> {
     await this.ensureBoardStructure(boardId);
 
-    const files = await this.kv.listChildren(tasksDir(boardId, initiativeId));
+    const files = await this.store.listChildren(tasksDir(boardId, initiativeId));
     let tasks: Task[] = [];
 
     for (const f of files) {
       if (!f.endsWith(".json")) continue;
-      const task = await this.kv.get<Task>(`${tasksDir(boardId, initiativeId)}/${f}`, isEntityRecord);
+      const task = await this.store.get<Task>(`${tasksDir(boardId, initiativeId)}/${f}`, isEntityRecord);
       if (task) {
         tasks.push(normalizeTask(task, initiativeId));
       }
@@ -1246,7 +1246,7 @@ export class DocumentStorage implements Storage {
   async getTask(boardId: string, initiativeId: string, taskId: string): Promise<Task | null> {
     await this.ensureBoardStructure(boardId);
 
-    const task = await this.kv.get<Task>(taskFile(boardId, initiativeId, taskId), isEntityRecord);
+    const task = await this.store.get<Task>(taskFile(boardId, initiativeId, taskId), isEntityRecord);
     if (!task) return null;
 
     return normalizeTask(task, initiativeId);
@@ -1304,7 +1304,7 @@ export class DocumentStorage implements Storage {
       initiativeId,
     );
 
-    await this.kv.put(taskFile(boardId, initiativeId, taskId), updated);
+    await this.store.put(taskFile(boardId, initiativeId, taskId), updated);
     await this.syncAgentPointersForTask(boardId, updated);
 
     const changedFields = Object.keys(data);
@@ -1331,9 +1331,9 @@ export class DocumentStorage implements Storage {
     // Read first: getTask may quarantine a corrupt file (moving it aside), so
     // capture the task before any delete and tolerate an already-gone file.
     const task = await this.getTask(boardId, initiativeId, taskId);
-    if (!task && !(await this.kv.exists(taskFile(boardId, initiativeId, taskId)))) return false;
+    if (!task && !(await this.store.exists(taskFile(boardId, initiativeId, taskId)))) return false;
 
-    await this.kv.delete(taskFile(boardId, initiativeId, taskId));
+    await this.store.delete(taskFile(boardId, initiativeId, taskId));
 
     if (task) {
       await this.syncAgentPointersForTask(boardId, { ...task, status: "todo" as TaskStatus });
@@ -1357,7 +1357,7 @@ export class DocumentStorage implements Storage {
   ): Promise<ActivityEvent[]> {
     await this.ensureBoardStructure(boardId);
 
-    const buckets = (await this.kv.listEventBuckets(eventsDir(boardId))).sort((a, b) => b.localeCompare(a));
+    const buckets = (await this.store.listEventBuckets(eventsDir(boardId))).sort((a, b) => b.localeCompare(a));
 
     const limit = options?.limit ?? 200;
     const hasFilters = !!(options?.initiativeId || options?.agentId || options?.taskId);
@@ -1367,7 +1367,7 @@ export class DocumentStorage implements Storage {
       // Buckets are sorted descending by date — stop early when no filters active.
       if (!hasFilters && events.length >= limit) break;
 
-      const records = await this.kv.readEventBucket(eventsDir(boardId), bucket);
+      const records = await this.store.readEventBucket(eventsDir(boardId), bucket);
       for (const record of records) {
         if (isRecord(record)) {
           events.push(record as unknown as ActivityEvent);

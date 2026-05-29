@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { DocumentStorage } from "./document-storage";
-import { InMemoryKvStore } from "./memory-kv";
+import { InMemoryObjectStore } from "./memory-object-store";
 import type { Agent, Initiative } from "@/lib/types";
 
-// Exercises the backend-agnostic business logic against an in-memory KvStore.
-// The same DocumentStorage runs on FsKvStore (local) and BlobKvStore (prod), so
+// Exercises the backend-agnostic business logic against an in-memory ObjectStore.
+// The same DocumentStorage runs on FsObjectStore (local) and BlobObjectStore (prod), so
 // these guarantees hold for every backend.
 let storage: DocumentStorage;
 
 beforeEach(() => {
-  storage = new DocumentStorage(new InMemoryKvStore());
+  storage = new DocumentStorage(new InMemoryObjectStore());
 });
 
 function intro(sessionKey: string) {
@@ -121,7 +121,7 @@ describe("DocumentStorage core flow", () => {
         throw new Error("boom");
       }
     }
-    const broken = new Broken(new InMemoryKvStore());
+    const broken = new Broken(new InMemoryObjectStore());
     const b = await broken.createBoard({ name: "B2", description: "" });
     const brokenSummary = await broken.getBoardSummary(b.id);
     expect(brokenSummary).not.toBeNull();

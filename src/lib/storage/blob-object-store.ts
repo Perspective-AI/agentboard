@@ -1,7 +1,7 @@
 import { BlobNotFoundError, copy, del, get, head, list, put } from "@vercel/blob";
 import { randomUUID } from "crypto";
 import { timestamp } from "@/lib/utils";
-import type { KvStore } from "./kv";
+import type { ObjectStore } from "./object-store";
 
 const ACCESS = "private" as const;
 const QUARANTINE_PREFIX = ".quarantine";
@@ -11,7 +11,7 @@ function isNotFound(err: unknown): boolean {
 }
 
 /**
- * Vercel Blob-backed KvStore for production / serverless deployments, where the
+ * Vercel Blob-backed ObjectStore for production / serverless deployments, where the
  * filesystem is read-only. Keys map directly to blob pathnames.
  *
  * Consistency notes:
@@ -22,7 +22,7 @@ function isNotFound(err: unknown): boolean {
  *   prevents the common create collision; updates to one record assume a single
  *   logical writer, which matches the app's per-entity access pattern.
  */
-export class BlobKvStore implements KvStore {
+export class BlobObjectStore implements ObjectStore {
   private async readText(key: string): Promise<string | null> {
     let res;
     try {
@@ -38,7 +38,10 @@ export class BlobKvStore implements KvStore {
   private async quarantine(key: string, reason: string): Promise<void> {
     try {
       const dest = `${QUARANTINE_PREFIX}/${timestamp().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}-${key.replace(/\//g, "_")}`;
-      await copy(key, dest, { access: ACCESS }).catch(() => {});
+      // Only delete the source after the copy succeeds — matching FsObjectStore,
+      // where a failed rename leaves the original intact. If copy throws we fall
+      // to the catch below and the corrupt blob is preserved for inspection.
+      await copy(key, dest, { access: ACCESS });
       await del(key);
       console.error(`Quarantined corrupt blob ${key} -> ${dest} (${reason})`);
     } catch (err) {

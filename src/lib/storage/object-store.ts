@@ -7,7 +7,7 @@
  * speaks only this interface, so swapping the backend (local FS vs. serverless
  * Blob) requires no changes to the storage semantics.
  */
-export interface KvStore {
+export interface ObjectStore {
   /**
    * Reads and parses the JSON value at `key`.
    * - Missing key -> null.

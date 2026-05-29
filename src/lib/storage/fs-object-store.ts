@@ -4,7 +4,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { getDataDir } from "@/lib/server-utils";
 import { timestamp } from "@/lib/utils";
-import type { KvStore } from "./kv";
+import type { ObjectStore } from "./object-store";
 
 function hasErrnoCode(err: unknown, code: string): boolean {
   return typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === code;
@@ -50,11 +50,11 @@ async function quarantineFile(filePath: string, reason: string): Promise<void> {
 }
 
 /**
- * Filesystem-backed KvStore. Keys are POSIX-relative paths mapped under the
+ * Filesystem-backed ObjectStore. Keys are POSIX-relative paths mapped under the
  * configured data dir. Suitable for local / self-hosted use; provides atomic
  * writes, per-path serialization, and corrupt-file quarantine.
  */
-export class FsKvStore implements KvStore {
+export class FsObjectStore implements ObjectStore {
   private abs(key: string): string {
     return path.join(getDataDir(), key);
   }

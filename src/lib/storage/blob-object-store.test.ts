@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Agent, Initiative } from "@/lib/types";
 
-// In-memory fake of the @vercel/blob SDK surface that BlobKvStore uses. It
+// In-memory fake of the @vercel/blob SDK surface that BlobObjectStore uses. It
 // faithfully models the behaviors the code depends on: not-found semantics,
 // conditional create (allowOverwrite:false), and folded prefix listing. This
-// lets us validate BlobKvStore's key/prefix translation end-to-end without a
+// lets us validate BlobObjectStore's key/prefix translation end-to-end without a
 // live Blob store.
 const blobs = new Map<string, string>();
 
@@ -67,14 +67,14 @@ mock.module("@vercel/blob", () => ({
   },
 }));
 
-const { BlobKvStore } = await import("./blob-kv");
+const { BlobObjectStore } = await import("./blob-object-store");
 const { DocumentStorage } = await import("./document-storage");
 
 let storage: InstanceType<typeof DocumentStorage>;
 
 beforeEach(() => {
   blobs.clear();
-  storage = new DocumentStorage(new BlobKvStore());
+  storage = new DocumentStorage(new BlobObjectStore());
 });
 
 function intro(sessionKey: string) {
@@ -88,7 +88,7 @@ async function seed(): Promise<{ boardId: string; agent: Agent; initiative: Init
   return { boardId: board.id, agent, initiative };
 }
 
-describe("BlobKvStore via DocumentStorage", () => {
+describe("BlobObjectStore via DocumentStorage", () => {
   test("create/list/get round-trip through blob keys", async () => {
     const { boardId, agent, initiative } = await seed();
     const task = await storage.createTask(

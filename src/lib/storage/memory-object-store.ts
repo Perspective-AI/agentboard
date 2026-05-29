@@ -1,10 +1,10 @@
-import type { KvStore } from "./kv";
+import type { ObjectStore } from "./object-store";
 
 /**
- * In-memory KvStore. Not for production — used to exercise DocumentStorage's
+ * In-memory ObjectStore. Not for production — used to exercise DocumentStorage's
  * business logic independently of any real backend.
  */
-export class InMemoryKvStore implements KvStore {
+export class InMemoryObjectStore implements ObjectStore {
   private store = new Map<string, string>();
 
   async get<T>(key: string, validate?: (value: unknown) => boolean): Promise<T | null> {

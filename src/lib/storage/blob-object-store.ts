@@ -5,7 +5,24 @@ import type { ObjectStore } from "./object-store";
 
 const ACCESS = "private" as const;
 const QUARANTINE_PREFIX = ".quarantine";
-const EVENT_READ_CONCURRENCY = 20;
+
+const appendQueues = new Map<string, Promise<unknown>>();
+
+function withAppendLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = appendQueues.get(key) ?? Promise.resolve();
+  const run = previous.then(fn, fn);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  appendQueues.set(key, settled);
+  void settled.then(() => {
+    if (appendQueues.get(key) === settled) {
+      appendQueues.delete(key);
+    }
+  });
+  return run;
+}
 
 function isNotFound(err: unknown): boolean {
   return err instanceof BlobNotFoundError;
@@ -157,40 +174,39 @@ export class BlobObjectStore implements ObjectStore {
     return [...names];
   }
 
+  private eventFile(eventsKey: string, bucket: string): string {
+    return `${eventsKey}/${bucket}.ndjson`;
+  }
+
   async appendEvent(eventsKey: string, bucket: string, record: unknown): Promise<void> {
-    // One blob per event avoids the read-modify-write race an append-to-file
-    // approach would suffer on object storage.
-    await put(`${eventsKey}/${bucket}/${randomUUID()}.json`, JSON.stringify(record), {
-      access: ACCESS,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-      contentType: "application/json",
+    const key = this.eventFile(eventsKey, bucket);
+    // Serialize appends to the same daily file so concurrent events cannot
+    // interleave partial lines — matching FsObjectStore.
+    await withAppendLock(key, async () => {
+      const existing = (await this.readText(key)) ?? "";
+      await put(key, `${existing}${JSON.stringify(record)}\n`, {
+        access: ACCESS,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        contentType: "application/x-ndjson",
+      });
     });
   }
 
   async listEventBuckets(eventsKey: string): Promise<string[]> {
-    // Buckets are the immediate subfolders of the events collection.
-    return this.listChildren(eventsKey);
+    const files = await this.listChildren(eventsKey);
+    return files.filter((name) => name.endsWith(".ndjson")).map((name) => name.slice(0, -".ndjson".length));
   }
 
   async readEventBucket(eventsKey: string, bucket: string): Promise<unknown[]> {
-    const pathnames = await this.listPathnames(`${eventsKey}/${bucket}/`);
+    const content = await this.readText(this.eventFile(eventsKey, bucket));
+    if (!content) return [];
     const records: unknown[] = [];
-    for (let i = 0; i < pathnames.length; i += EVENT_READ_CONCURRENCY) {
-      const batch = pathnames.slice(i, i + EVENT_READ_CONCURRENCY);
-      const batchRecords = await Promise.all(
-        batch.map(async (pathname) => {
-          const content = await this.readText(pathname);
-          if (content === null) return null;
-          try {
-            return JSON.parse(content);
-          } catch {
-            return null;
-          }
-        }),
-      );
-      for (const record of batchRecords) {
-        if (record !== null) records.push(record);
+    for (const line of content.split("\n").filter(Boolean)) {
+      try {
+        records.push(JSON.parse(line));
+      } catch {
+        // Skip malformed lines and continue.
       }
     }
     return records;

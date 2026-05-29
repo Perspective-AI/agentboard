@@ -1363,31 +1363,37 @@ export class DocumentStorage implements Storage {
     const hasFilters = !!(options?.initiativeId || options?.agentId || options?.taskId);
     const events: ActivityEvent[] = [];
 
-    for (const bucket of buckets) {
+    const matchesFilters = (event: ActivityEvent): boolean => {
+      if (options?.initiativeId && event.initiativeId !== options.initiativeId) return false;
+      if (options?.agentId && event.agentId !== options.agentId) return false;
+      if (options?.taskId && event.taskId !== options.taskId) return false;
+      return true;
+    };
+
+    for (let i = 0; i < buckets.length; i++) {
       // Buckets are sorted descending by date — stop early when no filters active.
       if (!hasFilters && events.length >= limit) break;
 
-      const records = await this.store.readEventBucket(eventsDir(boardId), bucket);
+      const records = await this.store.readEventBucket(eventsDir(boardId), buckets[i]!);
       for (const record of records) {
-        if (isRecord(record)) {
-          events.push(record as unknown as ActivityEvent);
-        }
+        if (!isRecord(record)) continue;
+        const event = record as unknown as ActivityEvent;
+        if (hasFilters && !matchesFilters(event)) continue;
+        events.push(event);
+      }
+
+      // With filters, stop once we have enough matches and older buckets cannot
+      // contribute events newer than the current cutoff.
+      if (hasFilters && events.length >= limit) {
+        events.sort((a, b) => compareStr(b.createdAt, a.createdAt));
+        const cutoffDate = events[limit - 1]!.createdAt.slice(0, 10);
+        const nextBucket = buckets[i + 1];
+        if (!nextBucket || nextBucket < cutoffDate) break;
       }
     }
 
-    let filtered = events;
-    if (options?.initiativeId) {
-      filtered = filtered.filter((e) => e.initiativeId === options.initiativeId);
-    }
-    if (options?.agentId) {
-      filtered = filtered.filter((e) => e.agentId === options.agentId);
-    }
-    if (options?.taskId) {
-      filtered = filtered.filter((e) => e.taskId === options.taskId);
-    }
+    events.sort((a, b) => compareStr(b.createdAt, a.createdAt));
 
-    filtered.sort((a, b) => compareStr(b.createdAt, a.createdAt));
-
-    return filtered.slice(0, limit);
+    return events.slice(0, limit);
   }
 }

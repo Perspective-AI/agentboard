@@ -10,7 +10,7 @@ type Params = {
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId, planId, stepId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const step = await storage.getPlanStep(boardId, initiativeId, planId, stepId);
 
     if (!step) {
@@ -41,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("assigneeAgentId" in body) updates.assigneeAgentId = body.assigneeAgentId;
     if ("order" in body) updates.order = body.order;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const step = await storage.updatePlanStep(boardId, initiativeId, planId, stepId, updates);
 
     if (!step) {
@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId, planId, stepId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const step = await storage.getPlanStep(boardId, initiativeId, planId, stepId);
     const deleted = await storage.deletePlanStep(boardId, initiativeId, planId, stepId);
 

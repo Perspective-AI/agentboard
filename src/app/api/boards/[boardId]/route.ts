@@ -8,7 +8,7 @@ type Params = { params: Promise<{ boardId: string }> };
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const summary = await storage.getBoardSummary(boardId);
     if (!summary) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Board not found" } }, { status: 404 });
@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("name" in body) updates.name = body.name;
     if ("description" in body) updates.description = body.description;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const board = await storage.updateBoard(boardId, updates);
     if (!board) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Board not found" } }, { status: 404 });
@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { boardId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const deleted = await storage.deleteBoard(boardId);
     if (!deleted) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Board not found" } }, { status: 404 });

@@ -195,7 +195,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const agentName = url.searchParams.get("name") || agentType + "-agent";
     const baseUrl = url.searchParams.get("url") || `${url.protocol}//${url.host}`;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const board = await storage.getBoard(boardId);
     if (!board) {
       return NextResponse.json(

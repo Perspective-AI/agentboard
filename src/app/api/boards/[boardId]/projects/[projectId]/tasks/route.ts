@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!actorAgentId) {
       return NextResponse.json({ ok: false, error: { code: "MISSING_ACTOR", message: "actorAgentId is required" } }, { status: 400 });
     }
-    const storage = getStorage();
+    const storage = await getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
       return NextResponse.json(
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       assignee: url.searchParams.get("assignee") || undefined,
       tag: url.searchParams.get("tag") || undefined,
     };
-    const storage = getStorage();
+    const storage = await getStorage();
     const tasks = await storage.listTasks(boardId, projectId, filters);
     return NextResponse.json({ ok: true, data: tasks });
   } catch (err) {

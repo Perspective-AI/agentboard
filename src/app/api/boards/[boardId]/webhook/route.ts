@@ -44,7 +44,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       );
     }
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const board = await storage.getBoard(boardId);
     if (!board) {
       return NextResponse.json(

@@ -8,7 +8,7 @@ type Params = { params: Promise<{ boardId: string; initiativeId: string; planId:
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId, planId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const plan = await storage.getPlan(boardId, initiativeId, planId);
 
     if (!plan) {
@@ -39,7 +39,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("ownerAgentId" in body) updates.ownerAgentId = body.ownerAgentId;
     if ("tags" in body) updates.tags = body.tags;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const plan = await storage.updatePlan(boardId, initiativeId, planId, updates);
 
     if (!plan) {
@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId, planId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const plan = await storage.getPlan(boardId, initiativeId, planId);
     const deleted = await storage.deletePlan(boardId, initiativeId, planId);
 

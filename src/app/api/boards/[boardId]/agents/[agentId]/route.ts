@@ -8,7 +8,7 @@ type Params = { params: Promise<{ boardId: string; agentId: string }> };
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, agentId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const agent = await storage.getAgent(boardId, agentId);
     if (!agent) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Agent not found" } }, { status: 404 });
@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("currentInitiativeId" in body) updates.currentInitiativeId = body.currentInitiativeId;
     if ("metadata" in body) updates.metadata = body.metadata;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const agent = await storage.updateAgent(boardId, agentId, updates);
     if (!agent) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Agent not found" } }, { status: 404 });
@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, agentId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const agent = await storage.getAgent(boardId, agentId);
     const deleted = await storage.deleteAgent(boardId, agentId);
     if (!deleted) {

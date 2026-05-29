@@ -8,7 +8,7 @@ type Params = { params: Promise<{ boardId: string; projectId: string }> };
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, projectId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const project = await storage.getProject(boardId, projectId);
     if (!project) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Project not found" } }, { status: 404 });
@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("kind" in body) updates.kind = body.kind;
     if ("assigneeAgentIds" in body) updates.assigneeAgentIds = body.assigneeAgentIds;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const project = await storage.updateProject(boardId, projectId, updates);
     if (!project) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Project not found" } }, { status: 404 });
@@ -51,7 +51,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, projectId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const project = await storage.getProject(boardId, projectId);
     const deleted = await storage.deleteProject(boardId, projectId);
     if (!deleted) {

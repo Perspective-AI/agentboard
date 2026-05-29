@@ -2,7 +2,6 @@ import type { Storage } from "./index";
 import type { ObjectStore } from "./object-store";
 import { DocumentStorage, AgentRegistrationError } from "./document-storage";
 import { FsObjectStore } from "./fs-object-store";
-import { BlobObjectStore } from "./blob-object-store";
 
 export { AgentRegistrationError };
 
@@ -23,20 +22,36 @@ export class FsStorage extends DocumentStorage {
  *   selects Blob, since the filesystem is read-only on serverless.
  * - Falls back to the filesystem for local development.
  */
-function selectObjectStore(): ObjectStore {
+async function selectObjectStore(): Promise<ObjectStore> {
   const mode = process.env.AGENTBOARD_STORAGE?.toLowerCase();
-  if (mode === "blob") return new BlobObjectStore();
+  if (mode === "blob") {
+    const { BlobObjectStore } = await import("./blob-object-store");
+    return new BlobObjectStore();
+  }
   if (mode === "fs") return new FsObjectStore();
-  if (process.env.BLOB_READ_WRITE_TOKEN) return new BlobObjectStore();
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const { BlobObjectStore } = await import("./blob-object-store");
+    return new BlobObjectStore();
+  }
   return new FsObjectStore();
 }
 
 // Singleton — use globalThis to survive Next.js HMR in development.
-const globalForStorage = globalThis as unknown as { _agentboardStorage?: Storage };
+const globalForStorage = globalThis as unknown as {
+  _agentboardStorage?: Storage;
+  _agentboardStoragePromise?: Promise<Storage>;
+};
 
-export function getStorage(): Storage {
-  if (!globalForStorage._agentboardStorage) {
-    globalForStorage._agentboardStorage = new DocumentStorage(selectObjectStore());
+export async function getStorage(): Promise<Storage> {
+  if (globalForStorage._agentboardStorage) {
+    return globalForStorage._agentboardStorage;
   }
-  return globalForStorage._agentboardStorage;
+  if (!globalForStorage._agentboardStoragePromise) {
+    globalForStorage._agentboardStoragePromise = (async () => {
+      const storage = new DocumentStorage(await selectObjectStore());
+      globalForStorage._agentboardStorage = storage;
+      return storage;
+    })();
+  }
+  return globalForStorage._agentboardStoragePromise;
 }

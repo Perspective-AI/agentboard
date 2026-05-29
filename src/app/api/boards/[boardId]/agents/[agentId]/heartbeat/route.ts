@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     } catch {
       // empty body is fine
     }
-    const storage = getStorage();
+    const storage = await getStorage();
     const agent = await storage.heartbeatAgent(boardId, agentId, message);
     if (!agent) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Agent not found" } }, { status: 404 });

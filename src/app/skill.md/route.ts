@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
   let projectsTable = "";
   try {
-    const storage = getStorage();
+    const storage = await getStorage();
     const projects = await storage.listProjects(boardId);
     if (projects.length > 0) {
       projectsTable = projects

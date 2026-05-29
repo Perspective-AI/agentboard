@@ -9,7 +9,7 @@ type Params = { params: Promise<{ boardId: string; initiativeId: string; taskId:
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId, taskId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const task = await storage.getTask(boardId, initiativeId, taskId);
 
     if (!task) {
@@ -39,7 +39,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { status: 400 },
       );
     }
-    const storage = getStorage();
+    const storage = await getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
       return NextResponse.json(
@@ -96,7 +96,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     }
 
     const { boardId, initiativeId, taskId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
       return NextResponse.json(

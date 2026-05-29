@@ -5,6 +5,7 @@ import type { ObjectStore } from "./object-store";
 
 const ACCESS = "private" as const;
 const QUARANTINE_PREFIX = ".quarantine";
+const EVENT_READ_CONCURRENCY = 20;
 
 function isNotFound(err: unknown): boolean {
   return err instanceof BlobNotFoundError;
@@ -174,17 +175,24 @@ export class BlobObjectStore implements ObjectStore {
 
   async readEventBucket(eventsKey: string, bucket: string): Promise<unknown[]> {
     const pathnames = await this.listPathnames(`${eventsKey}/${bucket}/`);
-    const records = await Promise.all(
-      pathnames.map(async (pathname) => {
-        const content = await this.readText(pathname);
-        if (content === null) return null;
-        try {
-          return JSON.parse(content);
-        } catch {
-          return null;
-        }
-      }),
-    );
-    return records.filter((r) => r !== null);
+    const records: unknown[] = [];
+    for (let i = 0; i < pathnames.length; i += EVENT_READ_CONCURRENCY) {
+      const batch = pathnames.slice(i, i + EVENT_READ_CONCURRENCY);
+      const batchRecords = await Promise.all(
+        batch.map(async (pathname) => {
+          const content = await this.readText(pathname);
+          if (content === null) return null;
+          try {
+            return JSON.parse(content);
+          } catch {
+            return null;
+          }
+        }),
+      );
+      for (const record of batchRecords) {
+        if (record !== null) records.push(record);
+      }
+    }
+    return records;
   }
 }

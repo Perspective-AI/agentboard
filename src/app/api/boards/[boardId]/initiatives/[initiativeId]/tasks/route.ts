@@ -27,7 +27,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       );
     }
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
       return NextResponse.json(
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const { boardId, initiativeId } = await params;
     const url = new URL(request.url);
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const tasks = await storage.listTasks(boardId, initiativeId, {
       status: url.searchParams.get("status") || undefined,
       assignee: url.searchParams.get("assignee") || undefined,

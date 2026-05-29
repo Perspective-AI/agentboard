@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: Params) {
     const limitRaw = url.searchParams.get("limit");
     const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const events = await storage.listActivity(boardId, {
       limit: Number.isFinite(limit) ? limit : undefined,
       initiativeId: url.searchParams.get("initiativeId") || undefined,

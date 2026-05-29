@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       );
     }
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const board = await storage.getBoard(boardId);
     if (!board) {
       return NextResponse.json(
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const initiatives = await storage.listInitiatives(boardId);
     return NextResponse.json({ ok: true, data: initiatives });
   } catch (err) {

@@ -9,7 +9,7 @@ type Params = { params: Promise<{ boardId: string; projectId: string; taskId: st
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, projectId, taskId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const task = await storage.getTask(boardId, projectId, taskId);
     if (!task) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Task not found" } }, { status: 404 });
@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { status: 400 },
       );
     }
-    const storage = getStorage();
+    const storage = await getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
       return NextResponse.json(
@@ -86,7 +86,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     }
 
     const { boardId, projectId, taskId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const actor = await storage.getAgent(boardId, actorAgentId);
     if (!actor) {
       return NextResponse.json(

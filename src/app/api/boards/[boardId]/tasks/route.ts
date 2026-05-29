@@ -13,7 +13,7 @@ export async function GET(request: NextRequest, { params }: Params) {
       assignee: url.searchParams.get("assignee") || undefined,
       tag: url.searchParams.get("tag") || undefined,
     };
-    const storage = getStorage();
+    const storage = await getStorage();
     const tasks = await storage.listAllBoardTasks(boardId, filters);
     return NextResponse.json({ ok: true, data: tasks });
   } catch (err) {

@@ -1,0 +1,214 @@
+import { BlobNotFoundError, copy, del, get, head, list, put } from "@vercel/blob";
+import { randomUUID } from "crypto";
+import { timestamp } from "@/lib/utils";
+import type { ObjectStore } from "./object-store";
+
+const ACCESS = "private" as const;
+const QUARANTINE_PREFIX = ".quarantine";
+
+const appendQueues = new Map<string, Promise<unknown>>();
+
+function withAppendLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = appendQueues.get(key) ?? Promise.resolve();
+  const run = previous.then(fn, fn);
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  appendQueues.set(key, settled);
+  void settled.then(() => {
+    if (appendQueues.get(key) === settled) {
+      appendQueues.delete(key);
+    }
+  });
+  return run;
+}
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof BlobNotFoundError;
+}
+
+/**
+ * Vercel Blob-backed ObjectStore for production / serverless deployments, where the
+ * filesystem is read-only. Keys map directly to blob pathnames.
+ *
+ * Consistency notes:
+ * - Reads use `useCache: false` to avoid stale CDN responses after a write.
+ * - `createIfAbsent` relies on `allowOverwrite: false` for atomic reservation.
+ * - There is no cross-instance lock, so concurrent writers to the *same* key
+ *   are last-write-wins (each write is itself atomic). Unique-id reservation
+ *   prevents the common create collision; updates to one record assume a single
+ *   logical writer, which matches the app's per-entity access pattern.
+ */
+export class BlobObjectStore implements ObjectStore {
+  private async readText(key: string): Promise<string | null> {
+    let res;
+    try {
+      res = await get(key, { access: ACCESS, useCache: false });
+    } catch (err) {
+      if (isNotFound(err)) return null;
+      throw err;
+    }
+    if (!res || res.statusCode !== 200 || !res.stream) return null;
+    return await new Response(res.stream).text();
+  }
+
+  private async quarantine(key: string, reason: string): Promise<void> {
+    try {
+      const dest = `${QUARANTINE_PREFIX}/${timestamp().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}-${key.replace(/\//g, "_")}`;
+      // Only delete the source after the copy succeeds — matching FsObjectStore,
+      // where a failed rename leaves the original intact. If copy throws we fall
+      // to the catch below and the corrupt blob is preserved for inspection.
+      await copy(key, dest, { access: ACCESS });
+      await del(key);
+      console.error(`Quarantined corrupt blob ${key} -> ${dest} (${reason})`);
+    } catch (err) {
+      console.error(`Failed to quarantine blob ${key}:`, err);
+    }
+  }
+
+  async get<T>(key: string, validate?: (value: unknown) => boolean): Promise<T | null> {
+    const content = await this.readText(key);
+    if (content === null) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch (err) {
+      console.error(`Corrupted JSON in blob ${key}:`, (err as Error).message);
+      await this.quarantine(key, "invalid JSON");
+      return null;
+    }
+
+    if (validate && !validate(parsed)) {
+      console.error(`Schema validation failed for blob ${key}; skipping`);
+      return null;
+    }
+
+    return parsed as T;
+  }
+
+  async put(key: string, data: unknown): Promise<void> {
+    await put(key, JSON.stringify(data, null, 2), {
+      access: ACCESS,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json",
+    });
+  }
+
+  async createIfAbsent(key: string): Promise<boolean> {
+    try {
+      await put(key, "{}", {
+        access: ACCESS,
+        addRandomSuffix: false,
+        allowOverwrite: false,
+        contentType: "application/json",
+      });
+      return true;
+    } catch (err) {
+      // allowOverwrite:false rejects when the key exists. Disambiguate a real
+      // conflict from a transient error by confirming the blob is present.
+      if (await this.exists(key)) return false;
+      throw err;
+    }
+  }
+
+  async exists(key: string): Promise<boolean> {
+    try {
+      // head() takes no `access` option (its type is BlobCommandOptions) — it is
+      // token-scoped and resolves private blobs via BLOB_READ_WRITE_TOKEN.
+      // Passing `access` here is a type error and breaks the build.
+      await head(key);
+      return true;
+    } catch (err) {
+      if (isNotFound(err)) return false;
+      throw err;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    try {
+      await del(key);
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+  }
+
+  private async listPathnames(prefix: string): Promise<string[]> {
+    const pathnames: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const res = await list({ prefix, cursor, limit: 1000 });
+      for (const blob of res.blobs) pathnames.push(blob.pathname);
+      cursor = res.hasMore ? res.cursor : undefined;
+    } while (cursor);
+    return pathnames;
+  }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    const p = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    const pathnames = await this.listPathnames(p);
+    // del accepts up to 1000 urls/pathnames per call.
+    for (let i = 0; i < pathnames.length; i += 1000) {
+      await del(pathnames.slice(i, i + 1000));
+    }
+  }
+
+  async listChildren(prefix: string): Promise<string[]> {
+    const p = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    const names = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const res = await list({ prefix: p, mode: "folded", cursor, limit: 1000 });
+      for (const blob of res.blobs) {
+        const rel = blob.pathname.slice(p.length);
+        if (rel && !rel.includes("/")) names.add(rel);
+      }
+      for (const folder of res.folders) {
+        const rel = folder.slice(p.length).replace(/\/$/, "");
+        if (rel) names.add(rel);
+      }
+      cursor = res.hasMore ? res.cursor : undefined;
+    } while (cursor);
+    return [...names];
+  }
+
+  private eventFile(eventsKey: string, bucket: string): string {
+    return `${eventsKey}/${bucket}.ndjson`;
+  }
+
+  async appendEvent(eventsKey: string, bucket: string, record: unknown): Promise<void> {
+    const key = this.eventFile(eventsKey, bucket);
+    // Serialize appends to the same daily file so concurrent events cannot
+    // interleave partial lines — matching FsObjectStore.
+    await withAppendLock(key, async () => {
+      const existing = (await this.readText(key)) ?? "";
+      await put(key, `${existing}${JSON.stringify(record)}\n`, {
+        access: ACCESS,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        contentType: "application/x-ndjson",
+      });
+    });
+  }
+
+  async listEventBuckets(eventsKey: string): Promise<string[]> {
+    const files = await this.listChildren(eventsKey);
+    return files.filter((name) => name.endsWith(".ndjson")).map((name) => name.slice(0, -".ndjson".length));
+  }
+
+  async readEventBucket(eventsKey: string, bucket: string): Promise<unknown[]> {
+    const content = await this.readText(this.eventFile(eventsKey, bucket));
+    if (!content) return [];
+    const records: unknown[] = [];
+    for (const line of content.split("\n").filter(Boolean)) {
+      try {
+        records.push(JSON.parse(line));
+      } catch {
+        // Skip malformed lines and continue.
+      }
+    }
+    return records;
+  }
+}

@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     if (!body.name) {
       return NextResponse.json({ ok: false, error: { code: "MISSING_NAME", message: "Board name is required" } }, { status: 400 });
     }
-    const storage = getStorage();
+    const storage = await getStorage();
     const board = await storage.createBoard({ name: body.name as string, description: (body.description as string) || "" });
     return NextResponse.json({ ok: true, data: board }, { status: 201 });
   } catch (err) {
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const storage = getStorage();
+    const storage = await getStorage();
     const boards = await storage.listBoards();
     return NextResponse.json({ ok: true, data: boards });
   } catch (err) {

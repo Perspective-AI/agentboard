@@ -8,7 +8,7 @@ type Params = { params: Promise<{ boardId: string; initiativeId: string }> };
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const initiative = await storage.getInitiative(boardId, initiativeId);
 
     if (!initiative) {
@@ -39,7 +39,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if ("kind" in body) updates.kind = body.kind;
     if ("assigneeAgentIds" in body) updates.assigneeAgentIds = body.assigneeAgentIds;
 
-    const storage = getStorage();
+    const storage = await getStorage();
     const initiative = await storage.updateInitiative(boardId, initiativeId, updates);
 
     if (!initiative) {
@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 export async function DELETE(_request: NextRequest, { params }: Params) {
   try {
     const { boardId, initiativeId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const initiative = await storage.getInitiative(boardId, initiativeId);
     const deleted = await storage.deleteInitiative(boardId, initiativeId);
 

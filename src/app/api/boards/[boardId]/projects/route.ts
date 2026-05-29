@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     if (!body.name) {
       return NextResponse.json({ ok: false, error: { code: "MISSING_NAME", message: "Project name is required" } }, { status: 400 });
     }
-    const storage = getStorage();
+    const storage = await getStorage();
     const board = await storage.getBoard(boardId);
     if (!board) {
       return NextResponse.json({ ok: false, error: { code: "NOT_FOUND", message: "Board not found" } }, { status: 404 });
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     const { boardId } = await params;
-    const storage = getStorage();
+    const storage = await getStorage();
     const projects = await storage.listProjects(boardId);
     return NextResponse.json({ ok: true, data: projects });
   } catch (err) {

@@ -38,7 +38,7 @@ export class BlobKvStore implements KvStore {
   private async quarantine(key: string, reason: string): Promise<void> {
     try {
       const dest = `${QUARANTINE_PREFIX}/${timestamp().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}-${key.replace(/\//g, "_")}`;
-      await copy(key, dest, { access: ACCESS }).catch(() => {});
+      await copy(key, dest, { access: ACCESS });
       await del(key);
       console.error(`Quarantined corrupt blob ${key} -> ${dest} (${reason})`);
     } catch (err) {

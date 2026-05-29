@@ -98,7 +98,10 @@ export class BlobObjectStore implements ObjectStore {
 
   async exists(key: string): Promise<boolean> {
     try {
-      await head(key, { access: ACCESS });
+      // head() takes no `access` option (its type is BlobCommandOptions) — it is
+      // token-scoped and resolves private blobs via BLOB_READ_WRITE_TOKEN.
+      // Passing `access` here is a type error and breaks the build.
+      await head(key);
       return true;
     } catch (err) {
       if (isNotFound(err)) return false;

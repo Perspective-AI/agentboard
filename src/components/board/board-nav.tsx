@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useBoardContext } from "./board-data-provider";
 import { cn } from "@/lib/utils";
-import { Activity, LayoutGrid, List, Users } from "lucide-react";
+import { Activity, LayoutGrid, List, MessageSquareText, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 const triggerBase =
@@ -16,24 +16,26 @@ interface Tab {
   value: string;
   label: string;
   icon: LucideIcon;
-  countKey?: "initiatives" | "agents" | "tasks" | "activity";
+  countKey?: "initiatives" | "agents" | "tasks" | "conversations" | "activity";
 }
 
 const tabs: Tab[] = [
   { value: "initiatives", label: "Board", icon: LayoutGrid, countKey: "initiatives" },
   { value: "tasks", label: "List", icon: List, countKey: "tasks" },
+  { value: "conversations", label: "Conversations", icon: MessageSquareText, countKey: "conversations" },
   { value: "agents", label: "Agents", icon: Users, countKey: "agents" },
   { value: "activity", label: "Activity", icon: Activity, countKey: "activity" },
 ];
 
 export function BoardNav({ boardId }: { boardId: string }) {
   const pathname = usePathname();
-  const { initiatives, agents, tasks, activity } = useBoardContext();
+  const { initiatives, agents, tasks, conversations, activity } = useBoardContext();
 
   const counts: Record<string, number> = {
     initiatives: initiatives.length,
     agents: agents.length,
     tasks: tasks.length,
+    conversations: conversations.length,
     activity: activity.length,
   };
 

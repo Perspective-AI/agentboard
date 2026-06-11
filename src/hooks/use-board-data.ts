@@ -5,6 +5,7 @@ import type {
   ActivityEvent,
   Agent,
   BoardSummary,
+  Conversation,
   Initiative,
   Project,
   SSEEvent,
@@ -18,6 +19,7 @@ interface BoardData {
   initiatives: Initiative[];
   projects: Project[];
   tasks: Task[];
+  conversations: Conversation[];
   activity: ActivityEvent[];
   loading: boolean;
   error: string | null;
@@ -29,6 +31,7 @@ export function useBoardData(boardId: string): BoardData {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [initiatives, setInitiatives] = useState<Initiative[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,19 +41,21 @@ export function useBoardData(boardId: string): BoardData {
       setLoading(true);
       setError(null);
 
-      const [boardRes, agentsRes, initiativesRes, tasksRes, activityRes] = await Promise.all([
+      const [boardRes, agentsRes, initiativesRes, tasksRes, conversationsRes, activityRes] = await Promise.all([
         fetch(`/api/boards/${boardId}`),
         fetch(`/api/boards/${boardId}/agents`),
         fetch(`/api/boards/${boardId}/initiatives`),
         fetch(`/api/boards/${boardId}/tasks`),
+        fetch(`/api/boards/${boardId}/conversations`),
         fetch(`/api/boards/${boardId}/activity?limit=200`),
       ]);
 
-      const [boardData, agentsData, initiativesData, tasksData, activityData] = await Promise.all([
+      const [boardData, agentsData, initiativesData, tasksData, conversationsData, activityData] = await Promise.all([
         boardRes.json(),
         agentsRes.json(),
         initiativesRes.json(),
         tasksRes.json(),
+        conversationsRes.json(),
         activityRes.json(),
       ]);
 
@@ -60,6 +65,7 @@ export function useBoardData(boardId: string): BoardData {
       if (agentsData.ok) setAgents(agentsData.data);
       if (initiativesData.ok) setInitiatives(initiativesData.data);
       if (tasksData.ok) setTasks(tasksData.data);
+      if (conversationsData.ok) setConversations(conversationsData.data);
       if (activityData.ok) setActivity(activityData.data);
     } catch {
       setError("Failed to load board data");
@@ -135,6 +141,18 @@ export function useBoardData(boardId: string): BoardData {
             return next;
           });
           break;
+        case "conversation:created":
+          setConversations((prev) => {
+            if (prev.some((c) => c.id === (data as Conversation).id)) return prev;
+            return [data as Conversation, ...prev];
+          });
+          break;
+        case "conversation:updated":
+          setConversations((prev) => prev.map((c) => (c.id === (data as Conversation).id ? (data as Conversation) : c)));
+          break;
+        case "conversation:removed":
+          setConversations((prev) => prev.filter((c) => c.id !== (data as Conversation).id));
+          break;
         case "activity:logged":
           setActivity((prev) => [data as ActivityEvent, ...prev].slice(0, 200));
           break;
@@ -162,6 +180,7 @@ export function useBoardData(boardId: string): BoardData {
     initiatives,
     projects: initiatives,
     tasks,
+    conversations,
     activity,
     loading,
     error,

@@ -3,6 +3,7 @@ import type {
   Agent,
   Board,
   BoardSummary,
+  Conversation,
   Initiative,
   Plan,
   PlanStep,
@@ -115,4 +116,53 @@ export interface Storage {
 
   // Activity
   listActivity(boardId: string, options?: { limit?: number; initiativeId?: string; agentId?: string; taskId?: string }): Promise<ActivityEvent[]>;
+
+  // Conversations
+  createConversation(
+    boardId: string,
+    data: Pick<
+      Conversation,
+      | "title"
+      | "description"
+      | "sourceType"
+      | "importType"
+      | "sourceSystem"
+      | "sourceReference"
+      | "transcript"
+      | "recordingUrls"
+      | "attachments"
+      | "tags"
+      | "metadata"
+      | "importedAt"
+      | "occurredAt"
+      | "startedAt"
+      | "endedAt"
+    >,
+  ): Promise<Conversation>;
+  listConversations(boardId: string): Promise<Conversation[]>;
+  getConversation(boardId: string, conversationId: string): Promise<Conversation | null>;
+  updateConversation(
+    boardId: string,
+    conversationId: string,
+    data: Partial<
+      Pick<
+        Conversation,
+        | "title"
+        | "description"
+        | "importType"
+        | "sourceSystem"
+        | "sourceReference"
+        | "transcript"
+        | "recordingUrls"
+        | "attachments"
+        | "tags"
+        | "metadata"
+        | "importedAt"
+        | "occurredAt"
+        | "startedAt"
+        | "endedAt"
+      >
+    >,
+  ): Promise<Conversation | null>;
+  deleteConversation(boardId: string, conversationId: string): Promise<boolean>;
 }

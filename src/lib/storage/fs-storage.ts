@@ -7,6 +7,7 @@ import type {
   Agent,
   Board,
   BoardSummary,
+  Conversation,
   Initiative,
   Plan,
   PlanStep,
@@ -281,6 +282,14 @@ function eventsDir(boardId: string): string {
   return path.join(boardDir(boardId), "events");
 }
 
+function conversationsDir(boardId: string): string {
+  return path.join(boardDir(boardId), "conversations");
+}
+
+function conversationFile(boardId: string, conversationId: string): string {
+  return path.join(conversationsDir(boardId), `${conversationId}.json`);
+}
+
 function legacyProjectsDir(boardId: string): string {
   return path.join(boardDir(boardId), "projects");
 }
@@ -344,6 +353,26 @@ function normalizeTask(task: Task, fallbackInitiativeId?: string): Task {
   };
 }
 
+function normalizeConversation(conversation: Conversation): Conversation {
+  return {
+    ...conversation,
+    description: conversation.description || "",
+    sourceType: conversation.sourceType || "agentic",
+    importType: conversation.importType || "transcript",
+    sourceSystem: conversation.sourceSystem || "unknown",
+    sourceReference: conversation.sourceReference || null,
+    transcript: conversation.transcript || "",
+    recordingUrls: conversation.recordingUrls || [],
+    attachments: conversation.attachments || [],
+    tags: conversation.tags || [],
+    metadata: conversation.metadata || {},
+    importedAt: conversation.importedAt || null,
+    occurredAt: conversation.occurredAt || null,
+    startedAt: conversation.startedAt || null,
+    endedAt: conversation.endedAt || null,
+  };
+}
+
 export class FsStorage implements Storage {
   private initializedBoards = new Set<string>();
   private initializingBoards = new Map<string, Promise<void>>();
@@ -359,6 +388,7 @@ export class FsStorage implements Storage {
     const initPromise = (async () => {
       await mkdir(agentsDir(boardId), { recursive: true });
       await mkdir(initiativesDir(boardId), { recursive: true });
+      await mkdir(conversationsDir(boardId), { recursive: true });
       await mkdir(eventsDir(boardId), { recursive: true });
 
       await this.migrateLegacyProjects(boardId);
@@ -532,6 +562,7 @@ export class FsStorage implements Storage {
 
     await mkdir(agentsDir(id), { recursive: true });
     await mkdir(initiativesDir(id), { recursive: true });
+    await mkdir(conversationsDir(id), { recursive: true });
     await mkdir(eventsDir(id), { recursive: true });
     await writeJson(path.join(boardDir(id), "board.json"), board);
 
@@ -573,10 +604,11 @@ export class FsStorage implements Storage {
       }
     };
 
-    const [agents, initiatives, tasks] = await Promise.all([
+    const [agents, initiatives, tasks, conversations] = await Promise.all([
       safeSection("agents", () => this.listAgents(boardId), [] as Agent[]),
       safeSection("initiatives", () => this.listInitiatives(boardId), [] as Initiative[]),
       safeSection("tasks", () => this.listAllBoardTasks(boardId), [] as Task[]),
+      safeSection("conversations", () => this.listConversations(boardId), [] as Conversation[]),
     ]);
 
     // Parallelize plan reads across initiatives
@@ -609,6 +641,7 @@ export class FsStorage implements Storage {
       planStepCount,
       projectCount: initiatives.length,
       taskCount: tasks.length,
+      conversationCount: conversations.length,
     };
   }
 
@@ -1487,6 +1520,152 @@ export class FsStorage implements Storage {
         agentId: actorAgentId,
       });
     }
+
+    return true;
+  }
+
+  // --- Conversations ---
+
+  async createConversation(
+    boardId: string,
+    data: Pick<
+      Conversation,
+      | "title"
+      | "description"
+      | "sourceType"
+      | "importType"
+      | "sourceSystem"
+      | "sourceReference"
+      | "transcript"
+      | "recordingUrls"
+      | "attachments"
+      | "tags"
+      | "metadata"
+      | "importedAt"
+      | "occurredAt"
+      | "startedAt"
+      | "endedAt"
+    >,
+  ): Promise<Conversation> {
+    await this.ensureBoardStructure(boardId);
+    const baseId = slugify(data.title);
+    const id = await resolveUniqueId((candidate) => conversationFile(boardId, candidate), baseId);
+    const now = timestamp();
+
+    const conversation = normalizeConversation({
+      id,
+      boardId,
+      title: data.title,
+      description: data.description || "",
+      sourceType: data.sourceType || "imported",
+      importType: data.importType || "transcript",
+      sourceSystem: data.sourceSystem || "unknown",
+      sourceReference: data.sourceReference || null,
+      transcript: data.transcript || "",
+      recordingUrls: data.recordingUrls || [],
+      attachments: data.attachments || [],
+      tags: data.tags || [],
+      metadata: data.metadata || {},
+      importedAt: data.importedAt || now,
+      occurredAt: data.occurredAt || null,
+      startedAt: data.startedAt || null,
+      endedAt: data.endedAt || null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await writeJson(conversationFile(boardId, id), conversation);
+
+    await this.appendActivity(boardId, {
+      type: "conversation.created",
+      message: `Conversation ${conversation.title} added from ${conversation.sourceSystem}`,
+      payload: {
+        conversationId: conversation.id,
+        sourceType: conversation.sourceType,
+        importType: conversation.importType,
+      },
+    });
+
+    return conversation;
+  }
+
+  async listConversations(boardId: string): Promise<Conversation[]> {
+    await this.ensureBoardStructure(boardId);
+    const files = await listDir(conversationsDir(boardId));
+    const conversations: Conversation[] = [];
+
+    for (const fileName of files) {
+      if (!fileName.endsWith(".json")) continue;
+      const conversation = await readJson<Conversation>(path.join(conversationsDir(boardId), fileName), isEntityRecord);
+      if (!conversation) continue;
+      conversations.push(normalizeConversation(conversation));
+    }
+
+    return conversations.sort((a, b) => compareStr(b.occurredAt || b.createdAt, a.occurredAt || a.createdAt));
+  }
+
+  async getConversation(boardId: string, conversationId: string): Promise<Conversation | null> {
+    await this.ensureBoardStructure(boardId);
+    const conversation = await readJson<Conversation>(conversationFile(boardId, conversationId), isEntityRecord);
+    return conversation ? normalizeConversation(conversation) : null;
+  }
+
+  async updateConversation(
+    boardId: string,
+    conversationId: string,
+    data: Partial<
+      Pick<
+        Conversation,
+        | "title"
+        | "description"
+        | "importType"
+        | "sourceSystem"
+        | "sourceReference"
+        | "transcript"
+        | "recordingUrls"
+        | "attachments"
+        | "tags"
+        | "metadata"
+        | "importedAt"
+        | "occurredAt"
+        | "startedAt"
+        | "endedAt"
+      >
+    >,
+  ): Promise<Conversation | null> {
+    await this.ensureBoardStructure(boardId);
+    const current = await this.getConversation(boardId, conversationId);
+    if (!current) return null;
+
+    const updated = normalizeConversation({
+      ...current,
+      ...data,
+      updatedAt: timestamp(),
+    });
+    await writeJson(conversationFile(boardId, conversationId), updated);
+
+    await this.appendActivity(boardId, {
+      type: "conversation.updated",
+      message: `Conversation ${updated.title} updated`,
+      payload: { conversationId: conversationId, fields: Object.keys(data) },
+    });
+
+    return updated;
+  }
+
+  async deleteConversation(boardId: string, conversationId: string): Promise<boolean> {
+    await this.ensureBoardStructure(boardId);
+    const filePath = conversationFile(boardId, conversationId);
+    if (!existsSync(filePath)) return false;
+
+    const current = await this.getConversation(boardId, conversationId);
+    await rm(filePath, { force: true });
+
+    await this.appendActivity(boardId, {
+      type: "conversation.removed",
+      message: current ? `Conversation ${current.title} removed` : `Conversation ${conversationId} removed`,
+      payload: { conversationId },
+    });
 
     return true;
   }

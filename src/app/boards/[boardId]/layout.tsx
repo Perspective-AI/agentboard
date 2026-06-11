@@ -13,7 +13,7 @@ function BoardLayoutInner({
   boardId: string;
   children: ReactNode;
 }) {
-  const { board, agents, initiatives, tasks, loading, error } = useBoardContext();
+  const { board, agents, initiatives, tasks, conversations, loading, error } = useBoardContext();
 
   if (loading) {
     return (
@@ -38,7 +38,7 @@ function BoardLayoutInner({
   }
 
   const isEmpty =
-    agents.length === 0 && initiatives.length === 0 && tasks.length === 0;
+    agents.length === 0 && initiatives.length === 0 && tasks.length === 0 && conversations.length === 0;
 
   return (
     <div className="flex flex-col h-full">

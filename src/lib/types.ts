@@ -92,6 +92,31 @@ export interface Task {
   completedAt: string | null;
 }
 
+export type ConversationSourceType = "agentic" | "imported";
+export type ConversationImportType = "transcript" | "recording" | "mixed";
+
+export interface Conversation {
+  id: string;
+  boardId: string;
+  title: string;
+  description: string;
+  sourceType: ConversationSourceType;
+  importType: ConversationImportType;
+  sourceSystem: string;
+  sourceReference: string | null;
+  transcript: string;
+  recordingUrls: string[];
+  attachments: string[];
+  tags: string[];
+  metadata: Record<string, unknown>;
+  importedAt: string | null;
+  occurredAt: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ActivityEvent {
   id: string;
   boardId: string;
@@ -126,6 +151,7 @@ export interface BoardSummary extends Board {
   planStepCount: number;
   projectCount: number;
   taskCount: number;
+  conversationCount: number;
 }
 
 export type SSEEventType =
@@ -147,6 +173,9 @@ export type SSEEventType =
   | "task:created"
   | "task:updated"
   | "task:removed"
+  | "conversation:created"
+  | "conversation:updated"
+  | "conversation:removed"
   | "activity:logged"
   | "board:updated";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { ActivityEvent, Agent, BoardSummary, Initiative, Project, Task } from "@/lib/types";
+import type { ActivityEvent, Agent, BoardSummary, Conversation, Initiative, Project, Task } from "@/lib/types";
 import { useBoardData } from "@/hooks/use-board-data";
 
 interface BoardDataContextValue {
@@ -10,6 +10,7 @@ interface BoardDataContextValue {
   initiatives: Initiative[];
   projects: Project[];
   tasks: Task[];
+  conversations: Conversation[];
   activity: ActivityEvent[];
   loading: boolean;
   error: string | null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useBoardContext } from "@/components/board/board-data-provider";
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +9,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { TimeAgo } from "@/components/common/time-ago";
-import type { ConversationImportType } from "@/lib/types";
+import type { ConversationImportType, ConversationSourceType } from "@/lib/types";
+
+const providerPresets = ["zoom", "gong", "google-meet", "teams", "phone-call", "manual-notes"];
+const importTypeOptions: ConversationImportType[] = ["transcript", "recording", "mixed"];
+const sourceTypeOptions: ConversationSourceType[] = ["imported", "agentic"];
 
 type FormState = {
   title: string;
+  sourceType: ConversationSourceType;
+  sourcePreset: string;
   sourceSystem: string;
   importType: ConversationImportType;
   occurredAt: string;
@@ -25,6 +31,8 @@ type FormState = {
 
 const initialForm: FormState = {
   title: "",
+  sourceType: "imported",
+  sourcePreset: "zoom",
   sourceSystem: "",
   importType: "transcript",
   occurredAt: "",
@@ -40,16 +48,56 @@ export default function ConversationsPage() {
   const boardId = params.boardId;
   const { conversations, refresh } = useBoardContext();
   const [form, setForm] = useState<FormState>(initialForm);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | ConversationImportType>("all");
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sortedConversations = useMemo(
-    () =>
-      [...conversations].sort((a, b) =>
-        (b.occurredAt || b.createdAt).localeCompare(a.occurredAt || a.createdAt),
-      ),
+  const sourceSystems = useMemo(
+    () => Array.from(new Set(conversations.map((conversation) => conversation.sourceSystem))).sort((a, b) => a.localeCompare(b)),
     [conversations],
   );
+
+  const sortedConversations = useMemo(
+    () => {
+      const query = search.trim().toLowerCase();
+
+      return [...conversations]
+        .filter((conversation) => {
+          if (typeFilter !== "all" && conversation.importType !== typeFilter) return false;
+          if (sourceFilter !== "all" && conversation.sourceSystem !== sourceFilter) return false;
+          if (!query) return true;
+
+          const haystack = [
+            conversation.title,
+            conversation.description,
+            conversation.sourceSystem,
+            conversation.sourceReference || "",
+            conversation.transcript,
+            conversation.tags.join(" "),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(query);
+        })
+        .sort((a, b) => (b.occurredAt || b.createdAt).localeCompare(a.occurredAt || a.createdAt));
+    },
+    [conversations, search, sourceFilter, typeFilter],
+  );
+
+  async function onTranscriptFilePick(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const text = await file.text();
+    setForm((prev) => {
+      const nextTranscript = prev.transcript.trim().length > 0 ? `${prev.transcript}\n\n${text}` : text;
+      return { ...prev, transcript: nextTranscript };
+    });
+
+    event.target.value = "";
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,8 +122,8 @@ export default function ConversationsPage() {
 
     const payload = {
       title: form.title,
-      sourceType: "imported" as const,
-      sourceSystem: form.sourceSystem || "manual-import",
+      sourceType: form.sourceType,
+      sourceSystem: form.sourceSystem || form.sourcePreset || "manual-import",
       importType: form.importType,
       occurredAt: form.occurredAt || null,
       importedAt: form.importedAt || null,
@@ -124,7 +172,39 @@ export default function ConversationsPage() {
                 required
               />
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <div className="grid gap-1.5">
+                <label htmlFor="sourceType" className="text-sm font-medium">Source type</label>
+                <select
+                  id="sourceType"
+                  value={form.sourceType}
+                  onChange={(event) => setForm((prev) => ({ ...prev, sourceType: event.target.value as ConversationSourceType }))}
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                  {sourceTypeOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-1.5">
+                <label htmlFor="sourcePreset" className="text-sm font-medium">Provider preset</label>
+                <select
+                  id="sourcePreset"
+                  value={form.sourcePreset}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      sourcePreset: event.target.value,
+                      sourceSystem: prev.sourceSystem || event.target.value,
+                    }))
+                  }
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                  {providerPresets.map((preset) => (
+                    <option key={preset} value={preset}>{preset}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid gap-1.5">
                 <label htmlFor="sourceSystem" className="text-sm font-medium">Source system</label>
                 <Input
@@ -136,14 +216,18 @@ export default function ConversationsPage() {
               </div>
               <div className="grid gap-1.5">
                 <label htmlFor="importType" className="text-sm font-medium">Import type</label>
-                <Input
+                <select
                   id="importType"
                   value={form.importType}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, importType: event.target.value as ConversationImportType }))
                   }
-                  placeholder="transcript | recording | mixed"
-                />
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                >
+                  {importTypeOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
               <div className="grid gap-1.5">
                 <label htmlFor="sourceReference" className="text-sm font-medium">Source reference</label>
@@ -186,6 +270,7 @@ export default function ConversationsPage() {
             </div>
             <div className="grid gap-1.5">
               <label htmlFor="transcript" className="text-sm font-medium">Transcript</label>
+              <Input id="transcriptFile" type="file" accept=".txt,.md,.vtt,.srt,.json,.csv,text/plain" onChange={onTranscriptFilePick} />
               <Textarea
                 id="transcript"
                 className="min-h-40"
@@ -213,7 +298,48 @@ export default function ConversationsPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>Search and filter</CardTitle>
+          <CardDescription>Find imported conversations by content, source, and import type.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search title, transcript, source, tags..."
+          />
+          <select
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as "all" | ConversationImportType)}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            <option value="all">All import types</option>
+            {importTypeOptions.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+          <select
+            value={sourceFilter}
+            onChange={(event) => setSourceFilter(event.target.value)}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            <option value="all">All sources</option>
+            {sourceSystems.map((source) => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+        </CardContent>
+      </Card>
+
       <div className="space-y-3">
+        {sortedConversations.length === 0 && (
+          <Card>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">No conversations match the current filters yet.</p>
+            </CardContent>
+          </Card>
+        )}
         {sortedConversations.map((conversation) => (
           <Card key={conversation.id}>
             <CardHeader className="gap-1">

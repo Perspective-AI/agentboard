@@ -1,6 +1,7 @@
 "use client";
 
 import { use, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { BoardDataProvider, useBoardContext } from "@/components/board/board-data-provider";
 import { BoardNav } from "@/components/board/board-nav";
@@ -13,6 +14,7 @@ function BoardLayoutInner({
   boardId: string;
   children: ReactNode;
 }) {
+  const pathname = usePathname();
   const { board, agents, initiatives, tasks, conversations, loading, error } = useBoardContext();
 
   if (loading) {
@@ -39,12 +41,13 @@ function BoardLayoutInner({
 
   const isEmpty =
     agents.length === 0 && initiatives.length === 0 && tasks.length === 0 && conversations.length === 0;
+  const showGettingStarted = isEmpty && pathname === `/boards/${boardId}`;
 
   return (
     <div className="flex flex-col h-full">
       <Header board={board} tabs={!isEmpty ? <BoardNav boardId={boardId} /> : undefined} />
       <div className="flex-1 p-4 overflow-y-auto">
-        {isEmpty ? (
+        {showGettingStarted ? (
           <GettingStarted boardId={boardId} />
         ) : (
           <div className="w-full">{children}</div>
